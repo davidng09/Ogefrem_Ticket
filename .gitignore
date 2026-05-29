@@ -1,0 +1,25 @@
+# Dépendances
+frontend/node_modules/
+
+# Build frontend (regénérable avec npm run build)
+frontend/dist/
+
+# Variables d'environnement locales (ne jamais committer)
+frontend/.env
+.env
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# XAMPP / temporaires (si présents)
+*.tmp
+*.bak

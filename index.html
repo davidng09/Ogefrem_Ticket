@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OGEFREM Ops Hub</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, sans-serif;
+        margin: 0;
+        background: #f7f9fb;
+        color: #191c1e;
+      }
+      main {
+        max-width: 720px;
+        margin: 48px auto;
+        padding: 0 20px;
+      }
+      h1 {
+        margin-bottom: 8px;
+      }
+      p {
+        color: #4c4546;
+      }
+      section {
+        margin-top: 24px;
+        padding: 16px;
+        border: 1px solid #cfc4c5;
+        border-radius: 8px;
+        background: #fff;
+      }
+      ul {
+        padding-left: 20px;
+      }
+      a {
+        color: #000;
+        font-weight: 600;
+      }
+      code {
+        background: #f2f4f6;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>OGEFREM Ops Hub</h1>
+      <p>Système de gestion des tickets IT — Direction DANTIC (OGEFREM).</p>
+
+      <section>
+        <h2>Application (recommandé)</h2>
+        <ul>
+          <li>
+            <strong>Développement :</strong> lancer <code>npm run dev</code> dans
+            <code>frontend/</code>, puis ouvrir
+            <a href="http://localhost:5173/" target="_blank" rel="noreferrer">http://localhost:5173/</a>
+          </li>
+          <li>
+            <strong>Production locale :</strong> après <code>npm run build</code>, ouvrir
+            <a href="./frontend/dist/index.html">frontend/dist/index.html</a>
+            (ou servir ce dossier via Apache)
+          </li>
+        </ul>
+        <p>Voir le guide complet : <a href="./README.md">README.md</a></p>
+      </section>
+
+      <section>
+        <h2>API PHP</h2>
+        <p>
+          Test santé :
+          <a href="./api/health">/Ogefrem/api/health</a>
+        </p>
+      </section>
+
+      <section>
+        <h2>Maquettes HTML (référence)</h2>
+        <ul>
+          <li><a href="./legacy/login.html">legacy/login.html</a></li>
+          <li><a href="./legacy/directeur.html">legacy/directeur.html</a></li>
+          <li><a href="./legacy/sous-direction.html">legacy/sous-direction.html</a></li>
+          <li><a href="./legacy/agent.html">legacy/agent.html</a></li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>
