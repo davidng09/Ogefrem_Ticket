@@ -1,4 +1,4 @@
-# OGEFREM Ops Hub
+# OGEFREM_Tickets
 
 Application web de **gestion des tickets IT** pour l’OGEFREM (pannes matérielles, logicielles, réseau).  
 La **Direction DANTIC** traite les signalements selon une hiérarchie : Responsable DANTIC → sous-directions → chefs de service → techniciens.
