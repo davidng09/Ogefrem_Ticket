@@ -33,7 +33,7 @@ function App() {
               }
             />
             <Route
-              path="/app/technicien"
+              path="/app/agent"
               element={
                 <RoleRoute allowed={['TECHNICIEN', 'SUPER_ADMIN']}>
                   <TechnicianField />

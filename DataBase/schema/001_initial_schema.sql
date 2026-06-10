@@ -11,8 +11,19 @@ USE ogefrem_ops_hub;
 CREATE TABLE sub_directorates (
   id TINYINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   code VARCHAR(50) NOT NULL UNIQUE,
-  label VARCHAR(120) NOT NULL
+  label VARCHAR(150) NOT NULL
 ) ENGINE=InnoDB;
+
+CREATE TABLE dantic_services (
+  id TINYINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  sub_directorate_id TINYINT UNSIGNED NOT NULL,
+  code VARCHAR(50) NOT NULL UNIQUE,
+  label VARCHAR(150) NOT NULL,
+  sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  CONSTRAINT fk_service_sub_dir FOREIGN KEY (sub_directorate_id) REFERENCES sub_directorates(id)
+) ENGINE=InnoDB;
+
+CREATE INDEX idx_services_sub_dir ON dantic_services(sub_directorate_id);
 
 CREATE TABLE roles (
   id TINYINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
@@ -37,13 +48,15 @@ CREATE TABLE users (
   email VARCHAR(150) NULL,
   role_id TINYINT UNSIGNED NOT NULL,
   sub_directorate_id TINYINT UNSIGNED NULL,
-  service_label VARCHAR(120) NULL,
+  service_id TINYINT UNSIGNED NULL,
+  service_label VARCHAR(150) NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   must_change_password TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id),
-  CONSTRAINT fk_users_sub_dir FOREIGN KEY (sub_directorate_id) REFERENCES sub_directorates(id)
+  CONSTRAINT fk_users_sub_dir FOREIGN KEY (sub_directorate_id) REFERENCES sub_directorates(id),
+  CONSTRAINT fk_users_service FOREIGN KEY (service_id) REFERENCES dantic_services(id)
 ) ENGINE=InnoDB;
 
 CREATE INDEX idx_users_role ON users(role_id);

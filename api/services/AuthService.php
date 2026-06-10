@@ -4,7 +4,7 @@ declare(strict_types=1);
 function loginUser(PDO $pdo, string $matricule, string $password): array
 {
     $sql = <<<SQL
-SELECT u.id, u.matricule, u.nom, u.prenom, u.password_hash, u.sub_directorate_id, u.service_label,
+SELECT u.id, u.matricule, u.nom, u.prenom, u.password_hash, u.sub_directorate_id, u.service_id, u.service_label,
        r.code AS role_code, r.label AS role_label
 FROM users u
 JOIN roles r ON r.id = u.role_id
@@ -28,6 +28,7 @@ SQL;
         'role_code' => $user['role_code'],
         'role_label' => $user['role_label'],
         'sub_directorate_id' => $user['sub_directorate_id'] ? (int)$user['sub_directorate_id'] : null,
+        'service_id' => $user['service_id'] ? (int)$user['service_id'] : null,
         'service_label' => $user['service_label'],
     ];
 

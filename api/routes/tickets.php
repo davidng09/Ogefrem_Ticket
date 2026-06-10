@@ -13,8 +13,23 @@ if ($method === 'POST' && $path === '/tickets/public') {
 if ($method === 'GET' && $path === '/tickets') {
     $user = requireAuth();
     $scope = isset($_GET['scope']) ? (string)$_GET['scope'] : null;
-    $tickets = getTicketsByUserScope($pdo, $user, $scope);
+    $view = isset($_GET['view']) ? (string)$_GET['view'] : null;
+    if ($view !== null && !in_array($view, ['current', 'history'], true)) {
+        jsonResponse(['ok' => false, 'message' => 'Vue invalide.'], 422);
+    }
+    $tickets = getTicketsByUserScope($pdo, $user, $scope, $view);
     jsonResponse(['ok' => true, 'tickets' => $tickets]);
+}
+
+if ($method === 'POST' && preg_match('#^/tickets/(\d+)/assign-sub-directorate$#', $path, $m)) {
+    $user = requireRoles(['DIRECTEUR', 'SUPER_ADMIN']);
+    $ticketId = (int)$m[1];
+    $body = readJsonBody();
+    $priority = (string)($body['priority'] ?? 'normale');
+    $slaDueAt = isset($body['sla_due_at']) && $body['sla_due_at'] !== '' ? (string)$body['sla_due_at'] : null;
+    $subDirectorateId = (int)($body['sub_directorate_id'] ?? 0);
+    assignToSubDirectorate($pdo, $user, $ticketId, $priority, $slaDueAt, $subDirectorateId);
+    jsonResponse(['ok' => true]);
 }
 
 if ($method === 'POST' && preg_match('#^/tickets/(\d+)/escalate$#', $path, $m)) {
@@ -42,14 +57,14 @@ if ($method === 'POST' && preg_match('#^/tickets/(\d+)/forward-to-chef$#', $path
 }
 
 if ($method === 'POST' && preg_match('#^/tickets/(\d+)/assign$#', $path, $m)) {
-    requireRoles(['CHEF_SERVICE', 'SUPER_ADMIN']);
+    $user = requireRoles(['CHEF_SERVICE', 'SUPER_ADMIN']);
     $ticketId = (int)$m[1];
     $body = readJsonBody();
     $technicianId = (int)($body['technician_id'] ?? 0);
     if ($technicianId <= 0) {
         jsonResponse(['ok' => false, 'message' => 'Technicien requis.'], 422);
     }
-    assignToTechnician($pdo, $ticketId, $technicianId);
+    assignToTechnician($pdo, $user, $ticketId, $technicianId);
     jsonResponse(['ok' => true]);
 }
 

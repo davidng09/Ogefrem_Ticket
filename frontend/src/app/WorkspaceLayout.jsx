@@ -1,8 +1,10 @@
 import { Bell, LogOut } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link, Outlet, useNavigate } from 'react-router-dom'
+import { Outlet, useNavigate } from 'react-router-dom'
+import { AppBrand } from './components/AppBrand'
 import { getHomeRouteByRole, useAuth } from './AuthContext'
 import { apiRequest } from './api'
+import { getRoleLabel } from './uiHelpers'
 
 function RoleSimulator() {
   const { roleSimulatorEnabled, simRole, setSimRole } = useAuth()
@@ -15,10 +17,10 @@ function RoleSimulator() {
       className="rounded border border-outline-variant bg-surface-low px-2 py-1 text-xs"
     >
       <option value="">Role Simulator off</option>
-      <option value="DIRECTEUR">Directeur</option>
-      <option value="SOUS_DIRECTEUR">Sous-directeur</option>
-      <option value="CHEF_SERVICE">Chef de service</option>
-      <option value="TECHNICIEN">Technicien</option>
+      <option value="DIRECTEUR">Directrice DANTIC</option>
+      <option value="SOUS_DIRECTEUR">Sous-directeur DANTIC</option>
+      <option value="CHEF_SERVICE">Chef de service DANTIC</option>
+      <option value="TECHNICIEN">Agent DANTIC</option>
       <option value="SUPER_ADMIN">Super Admin</option>
     </select>
   )
@@ -90,6 +92,7 @@ function NotificationsDropdown() {
 export function WorkspaceLayout() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  const displayName = [user?.prenom, user?.nom].filter(Boolean).join(' ')
 
   async function handleLogout() {
     await logout()
@@ -100,10 +103,11 @@ export function WorkspaceLayout() {
     <div className="min-h-screen bg-surface">
       <header className="sticky top-0 z-10 flex items-center justify-between border-b border-outline-variant bg-surface-lowest px-4 py-3">
         <div className="flex items-center gap-3">
-          <Link to={getHomeRouteByRole(user?.role_code)} className="text-sm font-semibold">
-            OGEFREM Ops Hub
-          </Link>
-          <span className="rounded bg-surface-low px-2 py-1 text-xs">{user?.role_code}</span>
+          <AppBrand linkTo={getHomeRouteByRole(user?.role_code)} />
+          <span className="rounded bg-surface-low px-2 py-1 text-xs">{getRoleLabel(user?.role_code)}</span>
+          <span className="rounded border border-outline-variant bg-surface-lowest px-2 py-1 text-xs text-on-surface-variant">
+            {displayName || 'Utilisateur connecte'}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <RoleSimulator />

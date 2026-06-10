@@ -25,6 +25,7 @@ require_once __DIR__ . '/routes/auth.php';
 require_once __DIR__ . '/routes/meta.php';
 require_once __DIR__ . '/routes/tickets.php';
 require_once __DIR__ . '/routes/reports.php';
+require_once __DIR__ . '/routes/periodic_reports.php';
 require_once __DIR__ . '/routes/notifications.php';
 require_once __DIR__ . '/routes/admin.php';
 

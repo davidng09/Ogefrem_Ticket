@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiRequest } from '../api'
 
-export function useTickets(scope) {
+export function useTickets(scope, view) {
   const [tickets, setTickets] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -10,7 +10,10 @@ export function useTickets(scope) {
     setLoading(true)
     setError('')
     try {
-      const query = scope ? `?scope=${encodeURIComponent(scope)}` : ''
+      const params = new URLSearchParams()
+      if (scope) params.set('scope', scope)
+      if (view) params.set('view', view)
+      const query = params.toString() ? `?${params.toString()}` : ''
       const data = await apiRequest(`/tickets${query}`)
       setTickets(data.tickets || [])
     } catch (err) {
@@ -18,7 +21,7 @@ export function useTickets(scope) {
     } finally {
       setLoading(false)
     }
-  }, [scope])
+  }, [scope, view])
 
   useEffect(() => {
     fetchTickets()

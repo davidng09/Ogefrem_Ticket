@@ -22,3 +22,6 @@ session_set_cookie_params([
     'samesite' => 'Lax',
 ]);
 session_start();
+
+define('DIRECTOR_VISIBILITY_HOURS', 48);
+define('AGENT_VISIBILITY_HOURS', 48);

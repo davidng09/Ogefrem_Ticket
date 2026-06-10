@@ -5,10 +5,10 @@ const ROLE_SIM_KEY = 'ogefrem_role_simulator'
 const ROLE_SIM_ENABLED = import.meta.env.VITE_DEV_ROLE_SIMULATOR === 'true'
 
 const simulatedProfiles = {
-  DIRECTEUR: { id: 1001, role_code: 'DIRECTEUR', nom: 'Responsable', prenom: 'DANTIC' },
-  SOUS_DIRECTEUR: { id: 1002, role_code: 'SOUS_DIRECTEUR', nom: 'Sous', prenom: 'Directeur', sub_directorate_id: 1 },
-  CHEF_SERVICE: { id: 1003, role_code: 'CHEF_SERVICE', nom: 'Chef', prenom: 'Service', sub_directorate_id: 1 },
-  TECHNICIEN: { id: 1004, role_code: 'TECHNICIEN', nom: 'Jean', prenom: 'Mbala', sub_directorate_id: 1 },
+  DIRECTEUR: { id: 1001, role_code: 'DIRECTEUR', nom: 'KABILA', prenom: 'Stéphanie', service_label: 'Direction DANTIC — Applications NTIC' },
+  SOUS_DIRECTEUR: { id: 1002, role_code: 'SOUS_DIRECTEUR', nom: 'MUTAMBA', prenom: 'Arsène', sub_directorate_id: 1, service_label: 'Sous-direction Infrastructures, Réseaux et Télécoms' },
+  CHEF_SERVICE: { id: 1003, role_code: 'CHEF_SERVICE', nom: 'MULUMBA', prenom: 'Joel', sub_directorate_id: 1, service_id: 2, service_label: 'Service Réseaux et Sécurité Informatique' },
+  TECHNICIEN: { id: 1004, role_code: 'TECHNICIEN', nom: 'MBALA', prenom: 'Jean', sub_directorate_id: 1, service_id: 2, service_label: 'B. Réseaux et Help-Desk' },
   SUPER_ADMIN: { id: 1005, role_code: 'SUPER_ADMIN', nom: 'Admin', prenom: 'Système' },
 }
 
@@ -84,7 +84,7 @@ export function getHomeRouteByRole(roleCode) {
     case 'CHEF_SERVICE':
       return '/app/sous-direction'
     case 'TECHNICIEN':
-      return '/app/technicien'
+      return '/app/agent'
     case 'SUPER_ADMIN':
       return '/app/admin'
     default:

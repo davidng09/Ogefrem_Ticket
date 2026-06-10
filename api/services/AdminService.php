@@ -30,9 +30,20 @@ function createUser(PDO $pdo, array $input): int
         jsonResponse(['ok' => false, 'message' => 'Rôle invalide.'], 422);
     }
 
+    $serviceId = !empty($input['service_id']) ? (int)$input['service_id'] : null;
+    $serviceLabel = $input['service_label'] ?? null;
+    if ($serviceId) {
+        $svcStmt = $pdo->prepare('SELECT label FROM dantic_services WHERE id = :id');
+        $svcStmt->execute(['id' => $serviceId]);
+        $svc = $svcStmt->fetch();
+        if ($svc) {
+            $serviceLabel = $svc['label'];
+        }
+    }
+
     $insert = $pdo->prepare(
-        'INSERT INTO users (matricule, password_hash, nom, prenom, email, role_id, sub_directorate_id, service_label, must_change_password)
-         VALUES (:matricule, :password_hash, :nom, :prenom, :email, :role_id, :sub_directorate_id, :service_label, 1)'
+        'INSERT INTO users (matricule, password_hash, nom, prenom, email, role_id, sub_directorate_id, service_id, service_label, must_change_password)
+         VALUES (:matricule, :password_hash, :nom, :prenom, :email, :role_id, :sub_directorate_id, :service_id, :service_label, 1)'
     );
     $insert->execute([
         'matricule' => $input['matricule'],
@@ -42,7 +53,8 @@ function createUser(PDO $pdo, array $input): int
         'email' => $input['email'] ?? null,
         'role_id' => (int)$role['id'],
         'sub_directorate_id' => $input['sub_directorate_id'] ?? null,
-        'service_label' => $input['service_label'] ?? null,
+        'service_id' => $serviceId,
+        'service_label' => $serviceLabel,
     ]);
 
     return (int)$pdo->lastInsertId();
