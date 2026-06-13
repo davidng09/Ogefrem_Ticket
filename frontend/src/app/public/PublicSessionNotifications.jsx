@@ -1,11 +1,16 @@
 import { Bell } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useClickOutside } from '../hooks/useClickOutside'
 import { formatEmittedDate } from '../uiHelpers'
 import { readSessionTickets } from './publicSessionTickets'
 
 export function PublicSessionNotifications() {
   const [items, setItems] = useState(() => readSessionTickets())
   const [open, setOpen] = useState(false)
+  const panelRef = useRef(null)
+
+  const close = useCallback(() => setOpen(false), [])
+  useClickOutside(panelRef, close, open)
 
   useEffect(() => {
     function sync() {
@@ -18,12 +23,13 @@ export function PublicSessionNotifications() {
   const count = items.length
 
   return (
-    <div className="relative">
+    <div className="relative" ref={panelRef}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="relative rounded border border-outline-variant bg-surface-low p-2"
         aria-label="Notifications de la session"
+        aria-expanded={open}
       >
         <Bell size={18} />
         {count > 0 && (
@@ -33,7 +39,7 @@ export function PublicSessionNotifications() {
         )}
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-2 w-80 max-h-80 overflow-y-auto rounded border border-outline-variant bg-surface-lowest p-2 shadow-lg">
+        <div className="absolute right-0 z-30 mt-2 max-h-80 w-80 overflow-y-auto rounded border border-outline-variant bg-surface-lowest p-2 shadow-lg">
           <p className="mb-2 border-b border-outline-variant pb-2 text-xs font-semibold uppercase text-on-surface-variant">
             Tickets soumis cette session ({count})
           </p>
@@ -55,7 +61,7 @@ export function PublicSessionNotifications() {
                     <p className="mt-1 text-xs text-on-surface-variant">{item.category_label}</p>
                   )}
                   {item.description && (
-                    <p className="mt-1 text-xs text-on-surface-variant line-clamp-2">{item.description}</p>
+                    <p className="mt-1 line-clamp-2 text-xs text-on-surface-variant">{item.description}</p>
                   )}
                 </li>
               ))}

@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './app/AuthContext'
+import { ThemeProvider } from './app/ThemeContext'
 import { ProtectedRoute } from './app/ProtectedRoute'
 import { RoleRoute } from './app/RoleRoute'
 import { WorkspaceLayout } from './app/WorkspaceLayout'
@@ -11,8 +12,9 @@ import { AdminPanel } from './app/workspaces/AdminPanel'
 
 function App() {
   return (
-    <AuthProvider>
-      <Routes>
+    <ThemeProvider>
+      <AuthProvider>
+        <Routes>
         <Route path="/" element={<PublicPortal />} />
         <Route element={<ProtectedRoute />}>
           <Route element={<WorkspaceLayout />}>
@@ -51,8 +53,9 @@ function App() {
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </AuthProvider>
+        </Routes>
+      </AuthProvider>
+    </ThemeProvider>
   )
 }
 

@@ -1,3 +1,4 @@
+import { Archive, CalendarDays, FileText, Inbox, Send } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { DirectorMonthlyReports } from '../components/DirectorMonthlyReports'
 import { Modal } from '../components/Modal'
@@ -276,7 +277,7 @@ function TicketTable({
                     {ticket.has_report_for_director && (
                       <button
                         type="button"
-                        className="block rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-800"
+                        className="badge-report block rounded border px-2 py-1 text-xs"
                         onClick={() => onOpenReport(ticket)}
                       >
                         Voir rapport
@@ -305,31 +306,90 @@ export function DirectorDashboard() {
   const [formState, setFormState] = useState({})
   const [editingIds, setEditingIds] = useState(new Set())
   const [activeTab, setActiveTab] = useState('received')
+  const [monthlyCount, setMonthlyCount] = useState(0)
+  const [seenCounts, setSeenCounts] = useState({})
 
   const receivedRaw = useMemo(() => tickets.filter((t) => t.status === 'nouveau'), [tickets])
   const sentRaw = useMemo(() => tickets.filter((t) => t.status !== 'nouveau'), [tickets])
+  const sentReportCount = useMemo(
+    () => sentRaw.filter((t) => Number(t.has_report_for_director) > 0).length,
+    [sentRaw],
+  )
   const receivedFilters = useTicketFilters(receivedRaw)
   const sentFilters = useTicketFilters(sentRaw)
 
-  const tabs = [
-    { id: 'received', label: 'Tickets reçus', count: receivedRaw.length },
-    { id: 'sent', label: 'Tickets en cours', count: sentRaw.length },
-    { id: 'reports', label: 'Rapports ticket', count: pendingReports.length },
-    { id: 'monthly', label: 'Rapports mensuels', count: 0 },
-    { id: 'archives', label: 'Archives', count: validatedReports.length },
-  ]
+  const tabs = useMemo(
+    () => [
+      {
+        id: 'received',
+        label: 'Reçus',
+        icon: Inbox,
+        title: 'Tickets reçus',
+        subtitle: "En attente d'affectation vers une sous-direction",
+        count: receivedRaw.length,
+      },
+      {
+        id: 'sent',
+        label: 'En cours',
+        icon: Send,
+        title: 'Tickets envoyés / en cours',
+        subtitle: 'Suivi des tickets affectés aux sous-directions',
+        count: sentReportCount,
+      },
+      {
+        id: 'reports',
+        label: 'Rapports',
+        icon: FileText,
+        title: 'Rapports ticket',
+        subtitle: 'En attente de validation directrice',
+        count: pendingReports.length,
+      },
+      {
+        id: 'monthly',
+        label: 'Mensuels',
+        icon: CalendarDays,
+        title: 'Rapports mensuels sous-directions',
+        subtitle: 'Lecture, commentaire et archivage',
+        count: monthlyCount,
+      },
+      {
+        id: 'archives',
+        label: 'Archives',
+        icon: Archive,
+        title: 'Archives',
+        subtitle: 'Rapports mensuels archivés et rapports ticket validés',
+        count: 0,
+      },
+    ],
+    [receivedRaw.length, sentReportCount, pendingReports.length, monthlyCount],
+  )
+
+  const activeTabMeta = tabs.find((t) => t.id === activeTab)
+
+  function tabHasNew(tab) {
+    return tab.count > 0 && tab.count > (seenCounts[tab.id] ?? 0)
+  }
+
+  useEffect(() => {
+    const current = tabs.find((t) => t.id === activeTab)
+    if (!current) return
+    setSeenCounts((prev) => ({ ...prev, [activeTab]: current.count }))
+  }, [activeTab, tabs])
 
   async function loadReports() {
     try {
-      const [pending, validated] = await Promise.all([
+      const [pending, validated, monthly] = await Promise.all([
         apiRequest('/reports?scope=director'),
         apiRequest('/reports/validated'),
+        apiRequest('/periodic/monthly-reports?visibility=active'),
       ])
       setPendingReports(pending.reports || [])
       setValidatedReports(validated.reports || [])
+      setMonthlyCount((monthly.reports || []).length)
     } catch {
       setPendingReports([])
       setValidatedReports([])
+      setMonthlyCount(0)
     }
   }
 
@@ -412,37 +472,49 @@ export function DirectorDashboard() {
   return (
     <div className="space-y-4">
       {notice && (
-        <div className="fixed right-4 top-4 z-40 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 shadow">
+        <div className="notice-info fixed right-4 top-4 z-40 rounded border px-3 py-2 text-sm shadow">
           {notice}
         </div>
       )}
 
-      <nav className="sticky top-0 z-10 flex flex-wrap gap-1 border-b border-outline-variant bg-surface/95 pb-0 backdrop-blur">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={`relative px-4 py-3 text-sm font-medium transition ${
-              activeTab === tab.id
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-on-surface-variant hover:text-on-surface'
-            }`}
-          >
-            {tab.label}
-            {tab.count > 0 && (
-              <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs">{tab.count}</span>
-            )}
-          </button>
-        ))}
+      <nav className="sticky top-0 z-10 flex flex-wrap items-center gap-0 border-b border-outline-variant bg-surface/95 backdrop-blur">
+        <div className="flex flex-wrap items-stretch">
+          {tabs.map((tab) => {
+            const Icon = tab.icon
+            const isActive = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`relative flex items-center gap-2 px-3 py-3 text-sm font-medium transition ${
+                  isActive
+                    ? 'border-b-2 border-primary text-primary'
+                    : 'text-on-surface-variant hover:bg-surface-low hover:text-on-surface'
+                }`}
+              >
+                <Icon size={16} strokeWidth={isActive ? 2.25 : 2} />
+                <span className="hidden sm:inline">{tab.label}</span>
+                {tabHasNew(tab) && (
+                  <span
+                    className="absolute right-1 top-2 h-2 w-2 rounded-full bg-error"
+                    aria-label="Nouvelles données"
+                  />
+                )}
+              </button>
+            )
+          })}
+        </div>
+        {activeTabMeta && (
+          <div className="min-w-0 flex-1 border-l border-outline-variant px-4 py-2">
+            <h2 className="truncate text-sm font-semibold">{activeTabMeta.title}</h2>
+            <p className="truncate text-xs text-on-surface-variant">{activeTabMeta.subtitle}</p>
+          </div>
+        )}
       </nav>
 
       {activeTab === 'received' && (
       <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
-        <div className="border-b border-outline-variant p-3">
-          <h3 className="font-semibold">Tickets reçus</h3>
-          <p className="text-xs text-on-surface-variant">En attente d&apos;affectation vers une sous-direction</p>
-        </div>
         <ScrollablePanel>
         <TicketTable
           tickets={receivedFilters.filteredTickets}
@@ -466,10 +538,6 @@ export function DirectorDashboard() {
 
       {activeTab === 'sent' && (
       <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
-        <div className="border-b border-outline-variant p-3">
-          <h3 className="font-semibold">Tickets envoyés / en cours</h3>
-          <p className="text-xs text-on-surface-variant">Suivi des tickets affectés aux sous-directions</p>
-        </div>
         <ScrollablePanel>
         <TicketTable
           tickets={sentFilters.filteredTickets}
@@ -493,10 +561,6 @@ export function DirectorDashboard() {
 
       {activeTab === 'reports' && (
       <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
-        <div className="border-b border-outline-variant p-3">
-          <h3 className="font-semibold">Rapports ticket</h3>
-          <p className="text-xs text-on-surface-variant">En attente de validation directrice</p>
-        </div>
         {pendingReports.length === 0 ? (
           <p className="p-4 text-sm text-on-surface-variant">Aucun rapport en attente.</p>
         ) : (
@@ -527,7 +591,6 @@ export function DirectorDashboard() {
 
       {activeTab === 'monthly' && (
       <section className="rounded border border-outline-variant bg-surface-lowest p-4 shadow-sm">
-        <h3 className="mb-3 font-semibold">Rapports mensuels sous-directions</h3>
         <DirectorMonthlyReports onNotice={showNotice} archived={false} />
       </section>
       )}
@@ -535,17 +598,11 @@ export function DirectorDashboard() {
       {activeTab === 'archives' && (
       <>
       <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
-        <div className="border-b border-outline-variant p-3">
-          <h3 className="font-semibold">Rapports mensuels archivés</h3>
-        </div>
         <div className="p-3">
           <DirectorMonthlyReports onNotice={showNotice} archived />
         </div>
       </section>
       <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
-        <div className="border-b border-outline-variant p-3">
-          <h3 className="font-semibold">Rapports ticket validés</h3>
-        </div>
         {validatedReports.length === 0 ? (
           <p className="p-4 text-sm text-on-surface-variant">Aucun rapport archivé.</p>
         ) : (

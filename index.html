@@ -45,42 +45,45 @@
   </head>
   <body>
     <main>
-      <h1>OGEFREM Tickets</h1>
-      <p>Système de gestion des tickets IT — Direction DANTIC (OGEFREM).</p>
+      <h1>OGEFREM — Applications DANTIC</h1>
+      <p>Hub local des applications DSI / DANTIC (OGEFREM, Kinshasa).</p>
 
       <section>
-        <h2>Application (recommandé)</h2>
+        <h2>Tickets IT</h2>
         <ul>
           <li>
-            <strong>Développement :</strong> lancer <code>npm run dev</code> dans
-            <code>frontend/</code>, puis ouvrir
+            <strong>Développement :</strong> <code>npm run dev</code> dans
+            <code>frontend/</code> →
             <a href="http://localhost:5173/" target="_blank" rel="noreferrer">http://localhost:5173/</a>
           </li>
           <li>
-            <strong>Production locale :</strong> après <code>npm run build</code>, ouvrir
+            <strong>Production locale :</strong>
             <a href="./frontend/dist/index.html">frontend/dist/index.html</a>
-            (ou servir ce dossier via Apache)
           </li>
+          <li>API : <a href="./api/health">/Ogefrem/api/health</a></li>
         </ul>
-        <p>Voir le guide complet : <a href="./README.md">README.md</a></p>
       </section>
 
       <section>
-        <h2>API PHP</h2>
-        <p>
-          Test santé :
-          <a href="./api/health">/Ogefrem/api/health</a>
-        </p>
-      </section>
-
-      <section>
-        <h2>Maquettes HTML (référence)</h2>
+        <h2>Parc informatique</h2>
         <ul>
-          <li><a href="./legacy/login.html">legacy/login.html</a></li>
-          <li><a href="./legacy/directeur.html">legacy/directeur.html</a></li>
-          <li><a href="./legacy/sous-direction.html">legacy/sous-direction.html</a></li>
-          <li><a href="./legacy/agent.html">legacy/agent.html</a></li>
+          <li>
+            <strong>Développement :</strong> <code>npm run dev</code> dans
+            <code>parc/frontend/</code> →
+            <a href="http://localhost:5174/" target="_blank" rel="noreferrer">http://localhost:5174/</a>
+          </li>
+          <li>
+            <strong>Production locale :</strong>
+            <a href="./parc/frontend/dist/index.html">parc/frontend/dist/index.html</a>
+          </li>
+          <li>API : <a href="./parc/api/health">/Ogefrem/parc/api/health</a></li>
         </ul>
+        <p>Base partagée <code>ogefrem_ops_hub</code> — migration <code>DataBase/migrations/20260612_parc_informatique.sql</code></p>
+      </section>
+
+      <section>
+        <h2>Documentation</h2>
+        <p><a href=".Tickets/README.md">README.md</a> — <a href="./parc_info/README.md">parc/README.md</a></p>
       </section>
     </main>
   </body>

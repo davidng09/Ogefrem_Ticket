@@ -1,34 +1,20 @@
 import { Bell, LogOut } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 import { AppBrand } from './components/AppBrand'
+import { ThemeToggle } from './components/ThemeToggle'
 import { getHomeRouteByRole, useAuth } from './AuthContext'
 import { apiRequest } from './api'
+import { useClickOutside } from './hooks/useClickOutside'
 import { getRoleLabel } from './uiHelpers'
-
-function RoleSimulator() {
-  const { roleSimulatorEnabled, simRole, setSimRole } = useAuth()
-  if (!roleSimulatorEnabled) return null
-
-  return (
-    <select
-      value={simRole}
-      onChange={(e) => setSimRole(e.target.value)}
-      className="rounded border border-outline-variant bg-surface-low px-2 py-1 text-xs"
-    >
-      <option value="">Role Simulator off</option>
-      <option value="DIRECTEUR">Directrice DANTIC</option>
-      <option value="SOUS_DIRECTEUR">Sous-directeur DANTIC</option>
-      <option value="CHEF_SERVICE">Chef de service DANTIC</option>
-      <option value="TECHNICIEN">Agent DANTIC</option>
-      <option value="SUPER_ADMIN">Super Admin</option>
-    </select>
-  )
-}
 
 function NotificationsDropdown() {
   const [items, setItems] = useState([])
   const [open, setOpen] = useState(false)
+  const panelRef = useRef(null)
+
+  const close = useCallback(() => setOpen(false), [])
+  useClickOutside(panelRef, close, open)
 
   useEffect(() => {
     apiRequest('/notifications')
@@ -53,11 +39,13 @@ function NotificationsDropdown() {
   }
 
   return (
-    <div className="relative">
+    <div className="relative" ref={panelRef}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="relative rounded border border-outline-variant bg-surface-low p-2"
+        aria-label="Notifications"
+        aria-expanded={open}
       >
         <Bell size={16} />
         {unreadCount > 0 && (
@@ -67,7 +55,7 @@ function NotificationsDropdown() {
         )}
       </button>
       {open && (
-        <div className="absolute right-0 z-20 mt-2 max-h-72 w-80 overflow-y-auto rounded border border-outline-variant bg-surface-lowest p-2 shadow-sm">
+        <div className="absolute right-0 z-20 mt-2 max-h-72 w-80 overflow-y-auto rounded border border-outline-variant bg-surface-lowest p-2 shadow-lg">
           {items.length === 0 ? (
             <p className="p-2 text-xs text-on-surface-variant">Aucune notification</p>
           ) : (
@@ -110,7 +98,7 @@ export function WorkspaceLayout() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <RoleSimulator />
+          <ThemeToggle />
           <NotificationsDropdown />
           <button
             type="button"

@@ -1,6 +1,7 @@
 import { AlertCircle, AppWindow, KeyRound, Monitor, Printer, Send, Shapes, Users, Wifi } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { AppBrand } from '../components/AppBrand'
+import { ThemeToggle } from '../components/ThemeToggle'
 import { apiRequest } from '../api'
 import { DanticLoginModal } from './DanticLoginModal'
 import { PublicSessionNotifications } from './PublicSessionNotifications'
@@ -123,6 +124,7 @@ export function PublicPortal() {
       <header className="sticky top-0 z-20 flex items-center justify-between border-b border-outline-variant bg-surface-lowest px-4 py-3 shadow-sm">
         <AppBrand />
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           <PublicSessionNotifications />
           <button
             type="button"

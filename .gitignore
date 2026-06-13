@@ -1,11 +1,17 @@
 # Dépendances
 frontend/node_modules/
+parc/frontend/node_modules/
 
 # Build frontend (regénérable avec npm run build)
 frontend/dist/
+parc/frontend/dist/
+
+# Données sensibles / export local
+users.csv
 
 # Variables d'environnement locales (ne jamais committer)
 frontend/.env
+parc/frontend/.env
 .env
 .env.local
 

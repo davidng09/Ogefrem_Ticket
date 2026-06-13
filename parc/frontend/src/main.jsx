@@ -1,16 +1,16 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import './index.css'
 import App from './App.jsx'
-
-const savedTheme = localStorage.getItem('ogefrem_theme') || 'light'
-document.documentElement.setAttribute('data-theme', savedTheme)
+import { AuthProvider } from './context/AuthContext.jsx'
+import './index.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
-      <App />
+      <AuthProvider>
+        <App />
+      </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
 )
