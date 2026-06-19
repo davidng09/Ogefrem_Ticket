@@ -10,8 +10,9 @@ export function useTeamUsers(roleCode, subDirectorateId, serviceId) {
     if (subDirectorateId) query.set('sub_directorate_id', String(subDirectorateId))
     if (serviceId) query.set('service_id', String(serviceId))
     const suffix = query.toString() ? `?${query.toString()}` : ''
+    const onlineSuffix = suffix ? `${suffix}&include_online=1` : '?include_online=1'
 
-    apiRequest(`/meta/users${suffix}`)
+    apiRequest(`/meta/users${onlineSuffix}`)
       .then((data) => setUsers(data.users || []))
       .catch(() => setUsers([]))
   }, [roleCode, subDirectorateId, serviceId])

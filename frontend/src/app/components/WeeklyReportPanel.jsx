@@ -3,7 +3,7 @@ import { apiRequest, apiUrl } from '../api'
 import { ScrollablePanel } from './ScrollablePanel'
 import { getCurrentYearMonth } from '../utils/calendarWeeks'
 
-export function WeeklyReportPanel({ onNotice }) {
+export function WeeklyReportPanel({ onNotice, onSaved }) {
   const { year, monthIndex } = getCurrentYearMonth()
   const month = monthIndex + 1
   const [weeks, setWeeks] = useState([])
@@ -18,16 +18,23 @@ export function WeeklyReportPanel({ onNotice }) {
     ])
     setWeeks(wData.weeks || [])
     setReminder(rData.reminder)
+    const weekList = wData.weeks || []
     const next = {}
-    ;(wData.weeks || []).forEach((w) => {
+    weekList.forEach((w) => {
       next[w.week_index] = w.report?.body || w.template || ''
     })
     setDrafts(next)
+    if (weekList.length) {
+      const target =
+        rData.reminder?.pending && rData.reminder?.week_index != null
+          ? rData.reminder.week_index
+          : weekList.find((w) => !w.report)?.week_index ?? weekList[weekList.length - 1]?.week_index
+      setExpanded(target)
+    }
   }
 
   useEffect(() => {
     load().catch(() => {})
-    apiRequest('/periodic/archive-resolved', { method: 'POST' }).catch(() => {})
   }, [year, month])
 
   async function save(weekIndex, status = 'finalise') {
@@ -42,7 +49,8 @@ export function WeeklyReportPanel({ onNotice }) {
       }),
     })
     onNotice?.('Rapport hebdomadaire enregistré.')
-    load()
+    await load()
+    onSaved?.()
   }
 
   function exportPdf(reportId) {
@@ -53,7 +61,7 @@ export function WeeklyReportPanel({ onNotice }) {
     <section className="space-y-3 rounded border border-outline-variant bg-surface-lowest p-4 shadow-sm">
       <h2 className="text-sm font-semibold uppercase tracking-wide">Rapports hebdomadaires</h2>
       {reminder?.pending && (
-        <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 animate-pulse">
           Rappel : rédigez votre rapport pour {reminder.week_label || 'cette semaine'}.
         </div>
       )}
@@ -68,12 +76,21 @@ export function WeeklyReportPanel({ onNotice }) {
               {w.label}
               <span className="text-xs text-on-surface-variant">
                 {w.report ? (w.report.status === 'finalise' ? 'Rédigé' : 'Brouillon') : 'À rédiger'}
+                {w.resolution_count === 0 && !w.report && (
+                  <span className="ml-2 text-amber-700">· aucune résolution</span>
+                )}
               </span>
             </button>
             {expanded === w.week_index && (
               <div className="mt-2 space-y-2">
+                {w.resolution_count === 0 && !w.report && (
+                  <p className="rounded border border-dashed border-amber-300 bg-amber-50/80 px-3 py-2 text-xs text-amber-900 animate-[fadeIn_0.4s_ease-out]">
+                    Aucune résolution enregistrée sur cette période — vous pouvez laisser le rapport vide ou
+                    noter l&apos;absence d&apos;activité.
+                  </p>
+                )}
                 <textarea
-                  className="w-full rounded border border-outline-variant p-2 text-sm font-mono"
+                  className="w-full rounded border border-outline-variant bg-surface-lowest p-2 text-sm font-mono text-on-surface"
                   rows={12}
                   value={drafts[w.week_index] || ''}
                   onChange={(e) => setDrafts((s) => ({ ...s, [w.week_index]: e.target.value }))}

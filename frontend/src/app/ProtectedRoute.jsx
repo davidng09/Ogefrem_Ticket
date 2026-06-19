@@ -1,4 +1,5 @@
 import { Navigate, Outlet } from 'react-router-dom'
+import { ChangePasswordGate } from './ChangePasswordGate'
 import { useAuth } from './AuthContext'
 
 export function ProtectedRoute() {
@@ -12,5 +13,9 @@ export function ProtectedRoute() {
     return <Navigate to="/" replace />
   }
 
-  return <Outlet />
+  return (
+    <ChangePasswordGate>
+      <Outlet />
+    </ChangePasswordGate>
+  )
 }

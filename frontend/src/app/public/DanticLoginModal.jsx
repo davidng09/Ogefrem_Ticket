@@ -60,6 +60,10 @@ export function DanticLoginModal({ open, onClose }) {
             onChange={(e) => setPassword(e.target.value)}
           />
           {error && <p className="text-xs text-error">{error}</p>}
+          <p className="text-center text-[11px] text-on-surface-variant">
+            Compte démo : matricule <span className="font-mono">DIR-001</span> — mot de passe{' '}
+            <span className="font-mono">Test@2026</span>
+          </p>
           <button
             type="submit"
             disabled={busy}

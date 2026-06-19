@@ -1,38 +1,41 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Archive, ClipboardList, FileText, Inbox, LayoutGrid, AlertTriangle } from 'lucide-react'
+import { ChefInterservicePanel } from '../components/ChefInterservicePanel'
+import { ChefMonthlyBundleInbox } from '../components/ChefMonthlyBundleInbox'
+import { DashboardTabButton } from '../components/DashboardTabButton'
+import { RefreshButton } from '../components/RefreshButton'
+import { ExecutiveDashboard } from '../components/ExecutiveDashboard'
 import { Modal } from '../components/Modal'
+import { OnlinePresenceBadge } from '../components/OnlinePresenceBadge'
+import { OpenTicketsPanel } from '../components/OpenTicketsPanel'
+import { PendingReportsPanel } from '../components/PendingReportsPanel'
+import { PaginatedReportsPanel } from '../components/PaginatedReportsPanel'
 import { ScrollablePanel } from '../components/ScrollablePanel'
-import { DateFilterHeader, PriorityFilterHeader, ServiceFilterHeader, StatusFilterHeader } from '../components/TicketTableFilters'
+import { TicketDetailLink } from '../components/TicketDetailLink'
+import { DateFilterHeader, PriorityFilterHeader, ServiceFilterHeader, ChefAssignedStatusFilterHeader } from '../components/TicketTableFilters'
 import { useAuth } from '../AuthContext'
 import { apiRequest } from '../api'
+import { usePresence } from '../hooks/usePresence'
 import { useTeamUsers } from '../hooks/useTeamUsers'
 import { useTicketFilters } from '../hooks/useTicketFilters'
-import { useTickets } from '../hooks/useTickets'
+import { usePaginatedTickets } from '../hooks/useTickets'
+import { useReportTabStats, useTicketTabStats } from '../hooks/useTabStats'
+import { useSeenTabCounts } from '../hooks/useSeenTabCounts'
+import { PaginationBar } from '../components/PaginationBar'
+import { UnresolvedConstraintsPanel } from '../components/UnresolvedConstraintsPanel'
 import {
   formatEmittedDate,
+  formatPriorityLabel,
+  formatServiceLabel,
   formatStatusLabel,
+  getChefServiceWorkspaceHeader,
   getPriorityBadgeClass,
   getStatusBadgeClass,
-  truncateText,
   canReassignChef,
   canReassignSubDirector,
 } from '../uiHelpers'
-
-function DashboardButton({ label, count, active, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded border p-4 text-left shadow-sm transition ${
-        active
-          ? 'border-primary bg-primary/10'
-          : 'border-outline-variant bg-surface-lowest hover:bg-surface-low'
-      }`}
-    >
-      <p className="text-xs uppercase text-on-surface-variant">{label}</p>
-      <p className="mt-1 text-3xl font-bold text-primary">{count}</p>
-    </button>
-  )
-}
+import { useSearchParams } from 'react-router-dom'
+import { applyWorkspaceSearchParams } from '../workspaceNavigation'
 
 function TicketTable({
   tickets,
@@ -46,7 +49,7 @@ function TicketTable({
   setStatusFilter,
   serviceFilter,
   setServiceFilter,
-  showStatusFilter = false,
+  chefAssignedStatusFilter = false,
   showServiceFilter = false,
   services = [],
   assignees,
@@ -57,16 +60,19 @@ function TicketTable({
   onAssign,
   onOpenReport,
   busyId,
+  assignFormState,
+  setAssignFormState,
+  pagination,
+  onPageChange,
+  itemLabel = 'tickets',
 }) {
   const isChef = variant === 'chef'
   const assigneeLabel = isChef ? 'agent' : 'chef de service'
   const assignButtonLabel = isChef ? 'Assigner les tâches' : 'Transmettre le ticket'
   const columnTitle = mode === 'received' ? (isChef ? 'Affectation' : 'Transmission') : 'Suivi'
-  if (tickets.length === 0) {
-    return <p className="p-4 text-sm text-on-surface-variant">Aucun ticket dans cette liste.</p>
-  }
 
   return (
+    <>
     <ScrollablePanel className="overflow-x-auto">
       <table className="w-full border-collapse text-left text-sm">
         <thead className="bg-surface-low text-xs uppercase text-on-surface-variant">
@@ -77,8 +83,8 @@ function TicketTable({
               <DateFilterHeader value={dateFilter} onChange={setDateFilter} />
             </th>
             <th className="p-2">
-              {showStatusFilter ? (
-                <StatusFilterHeader value={statusFilter} onChange={setStatusFilter} />
+              {chefAssignedStatusFilter ? (
+                <ChefAssignedStatusFilterHeader value={statusFilter} onChange={setStatusFilter} />
               ) : (
                 'Statut'
               )}
@@ -90,7 +96,14 @@ function TicketTable({
           </tr>
         </thead>
         <tbody>
-          {tickets.map((ticket) => {
+          {tickets.length === 0 ? (
+            <tr>
+              <td colSpan={6} className="p-4 text-sm text-on-surface-variant">
+                Aucun résultat pour ce filtre.
+              </td>
+            </tr>
+          ) : (
+          tickets.map((ticket) => {
             const isEditing = editingIds.has(ticket.id)
             const hasAssignee = isChef
               ? Boolean(ticket.assigned_technician_id && ticket.assigned_tech_name)
@@ -105,23 +118,52 @@ function TicketTable({
               <tr key={ticket.id} className="border-t border-outline-variant align-top">
                 <td className="p-2">
                   <p className="font-semibold">{ticket.ticket_number}</p>
-                  <p className="text-xs text-on-surface-variant">{truncateText(ticket.description, 60)}</p>
+                  <TicketDetailLink ticket={ticket} className="text-xs" />
                 </td>
                 <td className="p-2">{ticket.category_label}</td>
                 <td className="p-2 text-xs">{formatEmittedDate(ticket.created_at)}</td>
                 <td className="p-2">
-                  <span className={`rounded px-2 py-1 text-xs font-semibold ${getStatusBadgeClass(ticket.status)}`}>
+                  <span className={`rounded px-2 py-1 text-xs font-semibold ${getStatusBadgeClass(ticket.status, ticket)}`}>
                     {formatStatusLabel(ticket.status, ticket)}
                   </span>
                 </td>
                 <td className="p-2">
                   <span className={`rounded px-2 py-1 text-xs font-semibold ${getPriorityBadgeClass(ticket.priority)}`}>
-                    {ticket.priority}
+                    {formatPriorityLabel(ticket.priority)}
                   </span>
                 </td>
                 <td className="p-2">
                   {showAssignForm && (
                     <div className="space-y-2">
+                      {isChef && assignFormState && setAssignFormState && (
+                        <>
+                          <select
+                            className="w-full rounded border border-outline-variant p-1 text-xs"
+                            value={assignFormState[ticket.id]?.priority || ticket.priority || 'normale'}
+                            onChange={(e) =>
+                              setAssignFormState((s) => ({
+                                ...s,
+                                [ticket.id]: { ...s[ticket.id], priority: e.target.value },
+                              }))
+                            }
+                          >
+                            <option value="normale">Normale</option>
+                            <option value="elevee">Élevée</option>
+                            <option value="urgent">Urgent</option>
+                          </select>
+                          <input
+                            type="datetime-local"
+                            className="w-full rounded border border-outline-variant p-1 text-xs"
+                            value={assignFormState[ticket.id]?.sla_due_at || ''}
+                            onChange={(e) =>
+                              setAssignFormState((s) => ({
+                                ...s,
+                                [ticket.id]: { ...s[ticket.id], sla_due_at: e.target.value },
+                              }))
+                            }
+                          />
+                        </>
+                      )}
                       <select
                         className="w-full rounded border border-outline-variant p-1 text-xs"
                         value={selectedByTicket[ticket.id] || (mode === 'assigned' ? defaultAssigneeId : '') || ''}
@@ -132,8 +174,9 @@ function TicketTable({
                         <option value="">Choisir un {assigneeLabel}</option>
                         {assignees.map((member) => (
                           <option key={member.id} value={member.id}>
+                            {member.online ? '● ' : ''}
                             {member.prenom} {member.nom}
-                            {member.service_label ? ` — ${member.service_label}` : ''}
+                            {member.service_label ? ` — ${formatServiceLabel(member.service_label)}` : ''}
                           </option>
                         ))}
                       </select>
@@ -177,65 +220,101 @@ function TicketTable({
                 </td>
               </tr>
             )
-          })}
+          })
+          )}
         </tbody>
       </table>
     </ScrollablePanel>
+    {pagination && onPageChange && (
+      <PaginationBar pagination={pagination} onPageChange={onPageChange} itemLabel={itemLabel} />
+    )}
+    </>
   )
 }
 
 function ChefServiceView() {
   const { user } = useAuth()
-  const { tickets, loading, reload } = useTickets('chef')
+  const chefHeader = getChefServiceWorkspaceHeader(user)
+  const poolData = usePaginatedTickets('pool', null, 10)
+  const assignedData = usePaginatedTickets('assigned', null, 10)
+  const { subordinates } = usePresence({ enabled: true, trackSubordinates: true })
   const agents = useTeamUsers('TECHNICIEN', user?.sub_directorate_id, user?.service_id)
-  const [activeView, setActiveView] = useState('received')
+  const [activeView, setActiveView] = useState('interservice')
   const [selectedByTicket, setSelectedByTicket] = useState({})
+  const [assignFormState, setAssignFormState] = useState({})
   const [editingIds, setEditingIds] = useState(new Set())
   const [busyId, setBusyId] = useState(0)
   const [notice, setNotice] = useState('')
-  const [pendingReports, setPendingReports] = useState([])
+  const [pendingReportCount, setPendingReportCount] = useState(0)
   const [reportModal, setReportModal] = useState(null)
   const [reportComment, setReportComment] = useState('')
+  const [monthlyBundleCount, setMonthlyBundleCount] = useState(0)
+  const [reportsRefreshKey, setReportsRefreshKey] = useState(0)
+  const [interserviceCount, setInterserviceCount] = useState(0)
 
-  const activeTickets = useMemo(
-    () => tickets.filter((t) => t.status !== 'archive'),
-    [tickets],
-  )
+  const interserviceStats = useTicketTabStats('interservice_pool', null)
+  const poolStats = useTicketTabStats('pool', null)
+  const assignedStats = useTicketTabStats('assigned', null)
+  const reportStats = useReportTabStats('chef_service')
 
-  const receivedTickets = useMemo(
-    () => activeTickets.filter((t) => t.status === 'chez_chef_service'),
-    [activeTickets],
-  )
-
-  const assignedTickets = useMemo(
-    () => activeTickets.filter((t) => t.status !== 'chez_chef_service'),
-    [activeTickets],
-  )
-
-  const receivedFilters = useTicketFilters(receivedTickets)
-  const assignedFilters = useTicketFilters(assignedTickets, { enableStatus: true })
+  const poolFilters = useTicketFilters(poolData.tickets)
+  const assignedFilters = useTicketFilters(assignedData.tickets, { enableStatus: true })
 
   const counts = useMemo(
     () => ({
-      received: receivedTickets.length,
-      assigned: assignedTickets.length,
-      reports: pendingReports.length,
+      interservice: interserviceStats.stats?.total ?? interserviceCount,
+      pool: poolStats.stats?.total ?? poolData.pagination?.total ?? poolData.tickets.length,
+      assigned: assignedStats.stats?.total ?? assignedData.pagination?.total ?? assignedData.tickets.length,
+      reports: reportStats.stats?.total ?? pendingReportCount,
+      monthlyReceived: monthlyBundleCount,
     }),
-    [receivedTickets.length, assignedTickets.length, pendingReports.length],
+    [
+      interserviceStats.stats?.total,
+      interserviceCount,
+      poolStats.stats?.total,
+      poolData.pagination?.total,
+      poolData.tickets.length,
+      assignedStats.stats?.total,
+      assignedData.pagination?.total,
+      assignedData.tickets.length,
+      reportStats.stats?.total,
+      pendingReportCount,
+      monthlyBundleCount,
+    ],
   )
 
-  async function loadPendingReports() {
+  const tabTotals = useMemo(
+    () => ({
+      interservice: counts.interservice,
+      pool: counts.pool,
+      assigned: counts.assigned,
+      reports: counts.reports + counts.monthlyReceived,
+    }),
+    [counts],
+  )
+  const { hasNew, wasConsulted } = useSeenTabCounts(activeView, tabTotals)
+
+  function refreshAll() {
+    poolData.reload()
+    assignedData.reload()
+    interserviceStats.reload()
+    poolStats.reload()
+    assignedStats.reload()
+    reportStats.reload()
+  }
+
+  async function loadMonthlyBundleCount() {
     try {
-      const data = await apiRequest('/reports?scope=chef_service')
-      setPendingReports(data.reports || [])
+      const bundlesData = await apiRequest('/periodic/monthly-bundle/inbox')
+      setMonthlyBundleCount((bundlesData.bundles || []).length)
     } catch {
-      setPendingReports([])
+      setMonthlyBundleCount(0)
     }
   }
 
   useEffect(() => {
-    loadPendingReports()
-  }, [tickets])
+    loadMonthlyBundleCount()
+  }, [])
 
   function showNotice(msg) {
     setNotice(msg)
@@ -245,11 +324,16 @@ function ChefServiceView() {
   async function assignToAgent(ticketId) {
     const agentId = selectedByTicket[ticketId]
     if (!agentId) return
+    const form = assignFormState[ticketId] || {}
     setBusyId(ticketId)
     try {
       await apiRequest(`/tickets/${ticketId}/assign`, {
         method: 'POST',
-        body: JSON.stringify({ technician_id: Number(agentId) }),
+        body: JSON.stringify({
+          technician_id: Number(agentId),
+          priority: form.priority || 'normale',
+          sla_due_at: form.sla_due_at || null,
+        }),
       })
       setEditingIds((s) => {
         const next = new Set(s)
@@ -257,8 +341,8 @@ function ChefServiceView() {
         return next
       })
       showNotice('Ticket assigné à un agent.')
-      reload()
-      loadPendingReports()
+      refreshAll()
+      loadMonthlyBundleCount()
     } finally {
       setBusyId(0)
     }
@@ -294,14 +378,17 @@ function ChefServiceView() {
         ? 'Rapport validé — envoyé à la sous-direction.'
         : 'Rapport rejeté — renvoyé à l\'agent.',
     )
-    reload()
-    loadPendingReports()
+    refreshAll()
+    setReportsRefreshKey((k) => k + 1)
   }
+
+  const loading = poolData.loading && assignedData.loading
 
   if (loading) return <p className="text-sm">Chargement...</p>
 
   return (
     <div className="space-y-4">
+      <OnlinePresenceBadge onlineCount={subordinates.online_count} />
       {notice && (
         <div className="fixed right-4 top-4 z-40 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 shadow">
           {notice}
@@ -309,47 +396,94 @@ function ChefServiceView() {
       )}
 
       <section className="rounded border border-outline-variant bg-surface-lowest p-4 shadow-sm">
-        <h2 className="text-xl font-semibold">Tableau de bord — Chef de service DANTIC</h2>
-        <p className="text-sm text-on-surface-variant">{user?.service_label}</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">{chefHeader.serviceLine}</h2>
+            {chefHeader.subDirectorateLine ? (
+              <p className="text-sm text-on-surface-variant">{chefHeader.subDirectorateLine}</p>
+            ) : null}
+          </div>
+          <RefreshButton
+            onRefresh={async () => {
+              refreshAll()
+              await loadMonthlyBundleCount()
+            }}
+          />
+        </div>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-3">
-        <DashboardButton
-          label="Tickets reçus"
-          count={counts.received}
-          active={activeView === 'received'}
-          onClick={() => setActiveView('received')}
+      <section className="grid gap-3 md:grid-cols-4">
+        <DashboardTabButton
+          label="TOUS LES TICKETS"
+          icon={LayoutGrid}
+          count={counts.interservice}
+          categories={interserviceStats.stats?.by_category}
+          variant="categories"
+          hasNew={hasNew('interservice')}
+          consulted={wasConsulted('interservice')}
+          active={activeView === 'interservice'}
+          onClick={() => setActiveView('interservice')}
         />
-        <DashboardButton
+        <DashboardTabButton
+          label="File du service"
+          icon={Inbox}
+          count={counts.pool}
+          priority={poolStats.stats?.priority}
+          variant="priority"
+          hasNew={hasNew('pool')}
+          consulted={wasConsulted('pool')}
+          active={activeView === 'pool'}
+          onClick={() => setActiveView('pool')}
+        />
+        <DashboardTabButton
           label="Tickets affectés"
+          icon={ClipboardList}
           count={counts.assigned}
+          priority={assignedStats.stats?.priority}
+          variant="priority"
+          hasNew={hasNew('assigned')}
+          consulted={wasConsulted('assigned')}
           active={activeView === 'assigned'}
           onClick={() => setActiveView('assigned')}
         />
-        <DashboardButton
+        <DashboardTabButton
           label="Validation des rapports"
-          count={counts.reports}
+          icon={FileText}
+          count={counts.reports + counts.monthlyReceived}
+          reports={reportStats.stats?.reports}
+          variant="reports"
+          hasNew={hasNew('reports')}
+          consulted={wasConsulted('reports')}
           active={activeView === 'reports'}
           onClick={() => setActiveView('reports')}
         />
       </section>
 
-      {activeView === 'received' && (
+      {activeView === 'interservice' && (
+        <ChefInterservicePanel
+          onNotice={showNotice}
+          onChanged={refreshAll}
+          onTotalChange={setInterserviceCount}
+        />
+      )}
+
+      {activeView === 'pool' && (
         <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
           <div className="border-b border-outline-variant p-3">
-            <h3 className="font-semibold">Tickets reçus</h3>
+            <h3 className="font-semibold">File du service</h3>
             <p className="text-xs text-on-surface-variant">
-              Transmis par la sous-direction — en attente d&apos;affectation à un agent
+              Tickets pris en charge et vus par les membres du service — affectez un agent (● connecté)
+              ou laissez-les prendre en main depuis leur espace
             </p>
           </div>
           <TicketTable
-            tickets={receivedFilters.filteredTickets}
+            tickets={poolFilters.filteredTickets}
             mode="received"
             variant="chef"
-            priorityFilter={receivedFilters.priorityFilter}
-            setPriorityFilter={receivedFilters.setPriorityFilter}
-            dateFilter={receivedFilters.dateFilter}
-            setDateFilter={receivedFilters.setDateFilter}
+            priorityFilter={poolFilters.priorityFilter}
+            setPriorityFilter={poolFilters.setPriorityFilter}
+            dateFilter={poolFilters.dateFilter}
+            setDateFilter={poolFilters.setDateFilter}
             assignees={agents}
             selectedByTicket={selectedByTicket}
             setSelectedByTicket={setSelectedByTicket}
@@ -358,6 +492,10 @@ function ChefServiceView() {
             onAssign={assignToAgent}
             onOpenReport={openReportForTicket}
             busyId={busyId}
+            assignFormState={assignFormState}
+            setAssignFormState={setAssignFormState}
+            pagination={poolData.pagination}
+            onPageChange={poolData.setPage}
           />
         </section>
       )}
@@ -378,7 +516,7 @@ function ChefServiceView() {
             setDateFilter={assignedFilters.setDateFilter}
             statusFilter={assignedFilters.statusFilter}
             setStatusFilter={assignedFilters.setStatusFilter}
-            showStatusFilter
+            chefAssignedStatusFilter
             assignees={agents}
             selectedByTicket={selectedByTicket}
             setSelectedByTicket={setSelectedByTicket}
@@ -387,46 +525,41 @@ function ChefServiceView() {
             onAssign={assignToAgent}
             onOpenReport={openReportForTicket}
             busyId={busyId}
+            pagination={assignedData.pagination}
+            onPageChange={assignedData.setPage}
           />
         </section>
       )}
 
       {activeView === 'reports' && (
-        <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
-          <div className="border-b border-outline-variant p-3">
-            <h3 className="font-semibold">Validation des rapports</h3>
-            <p className="text-xs text-on-surface-variant">
-              Rapports soumis par les agents — à valider ou rejeter
-            </p>
-          </div>
-          {pendingReports.length === 0 ? (
-            <p className="p-4 text-sm text-on-surface-variant">Aucun rapport en attente de validation.</p>
-          ) : (
-            <div className="divide-y divide-outline-variant">
-              {pendingReports.map((report) => (
-                <button
-                  key={report.id}
-                  type="button"
-                  className="flex w-full items-start justify-between gap-3 p-3 text-left hover:bg-surface-low"
-                  onClick={() => {
-                    setReportModal(report)
-                    setReportComment('')
-                  }}
-                >
-                  <div>
-                    <p className="text-sm font-semibold">{report.ticket_number}</p>
-                    <p className="text-xs text-on-surface-variant">{truncateText(report.body, 100)}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant">
-                      {report.author_name} — {formatEmittedDate(report.created_at)}
-                    </p>
-                  </div>
-                  <span className={`shrink-0 rounded px-2 py-1 text-xs ${getPriorityBadgeClass(report.priority)}`}>
-                    {report.priority}
-                  </span>
-                </button>
-              ))}
+        <section className="space-y-4">
+          <div>
+            <div className="mb-3">
+              <h3 className="font-semibold">Validation des rapports ticket</h3>
+              <p className="text-xs text-on-surface-variant">
+                Rapports soumis par les agents — à valider ou rejeter
+              </p>
             </div>
-          )}
+            <PendingReportsPanel
+              key={reportsRefreshKey}
+              scope="chef_service"
+              onSelectReport={(report) => {
+                setReportModal(report)
+                setReportComment('')
+              }}
+              onTotalChange={setPendingReportCount}
+              emptyMessage="Aucun rapport en attente de validation."
+            />
+          </div>
+
+          <div className="rounded border border-outline-variant bg-surface-lowest p-3 shadow-sm">
+            <h3 className="mb-1 font-semibold">Rapports mensuels reçus</h3>
+            <p className="mb-3 text-xs text-on-surface-variant">
+              Synthèses hebdomadaires envoyées par les agents (ou chefs de bureau) — pas de dépôt
+              directrice depuis cet écran.
+            </p>
+            <ChefMonthlyBundleInbox />
+          </div>
         </section>
       )}
 
@@ -476,113 +609,39 @@ function ChefServiceView() {
 
 function SubDirecteurView() {
   const { user } = useAuth()
-  const { tickets, loading, reload } = useTickets('sub_directorate')
-  const chefs = useTeamUsers('CHEF_SERVICE', user?.sub_directorate_id)
-  const [activeView, setActiveView] = useState('received')
-  const [selectedByTicket, setSelectedByTicket] = useState({})
-  const [editingIds, setEditingIds] = useState(new Set())
-  const [busyId, setBusyId] = useState(0)
+  const [searchParams] = useSearchParams()
+  const [activeView, setActiveView] = useState('dashboard')
+  const [focusTicketId, setFocusTicketId] = useState(null)
   const [notice, setNotice] = useState('')
-  const [pendingReports, setPendingReports] = useState([])
   const [reportModal, setReportModal] = useState(null)
   const [reportComment, setReportComment] = useState('')
+  const [reportsRefreshKey, setReportsRefreshKey] = useState(0)
+  const [dashboardRefreshToken, setDashboardRefreshToken] = useState(0)
+  const [openPanelRefreshToken, setOpenPanelRefreshToken] = useState(0)
 
-  const activeTickets = useMemo(
-    () => tickets.filter((t) => t.status !== 'archive'),
-    [tickets],
-  )
+  const openStats = useTicketTabStats(null, 'open')
+  const reportStats = useReportTabStats('sub_directorate')
 
-  const receivedTickets = useMemo(
-    () => activeTickets.filter((t) => t.status === 'chez_sous_direction'),
-    [activeTickets],
-  )
-
-  const assignedTickets = useMemo(
-    () => activeTickets.filter((t) => t.status !== 'chez_sous_direction'),
-    [activeTickets],
-  )
-
-  const receivedFilters = useTicketFilters(receivedTickets)
-  const resolveChefServiceId = useMemo(
-    () => (ticket) => chefs.find((c) => c.id === ticket.assigned_chef_id)?.service_id,
-    [chefs],
-  )
-  const sdServices = useMemo(() => {
-    const map = new Map()
-    chefs.forEach((c) => {
-      if (c.service_id && !map.has(c.service_id)) {
-        map.set(c.service_id, { id: c.service_id, label: c.service_label || `Service ${c.service_id}` })
-      }
-    })
-    return [...map.values()]
-  }, [chefs])
-  const assignedFilters = useTicketFilters(assignedTickets, {
-    enableStatus: true,
-    enableService: true,
-    resolveServiceId: resolveChefServiceId,
-  })
-
-  const counts = useMemo(
+  const tabTotals = useMemo(
     () => ({
-      received: receivedTickets.length,
-      assigned: assignedTickets.length,
-      reports: pendingReports.length,
+      dashboard: 0,
+      open: openStats.stats?.total ?? 0,
+      reports: reportStats.stats?.total ?? 0,
     }),
-    [receivedTickets.length, assignedTickets.length, pendingReports.length],
+    [openStats.stats?.total, reportStats.stats?.total],
   )
-
-  async function loadPendingReports() {
-    try {
-      const data = await apiRequest('/reports?scope=sub_directorate')
-      setPendingReports(data.reports || [])
-    } catch {
-      setPendingReports([])
-    }
-  }
+  const { hasNew, wasConsulted } = useSeenTabCounts(activeView, tabTotals)
 
   useEffect(() => {
-    loadPendingReports()
-  }, [tickets])
+    applyWorkspaceSearchParams(searchParams, {
+      setTab: setActiveView,
+      setFocusTicketId,
+    })
+  }, [searchParams])
 
   function showNotice(msg) {
     setNotice(msg)
     setTimeout(() => setNotice(''), 2600)
-  }
-
-  async function forwardToChef(ticketId) {
-    const chefId = selectedByTicket[ticketId]
-    if (!chefId) return
-    setBusyId(ticketId)
-    try {
-      await apiRequest(`/tickets/${ticketId}/forward-to-chef`, {
-        method: 'POST',
-        body: JSON.stringify({ chef_id: Number(chefId) }),
-      })
-      setEditingIds((s) => {
-        const next = new Set(s)
-        next.delete(ticketId)
-        return next
-      })
-      showNotice('Ticket transmis au chef de service.')
-      reload()
-      loadPendingReports()
-    } finally {
-      setBusyId(0)
-    }
-  }
-
-  async function openReportForTicket(ticket) {
-    try {
-      const data = await apiRequest(`/tickets/${ticket.id}/sub-directorate-report`)
-      if (data.report) {
-        setReportModal(data.report)
-        setReportComment('')
-      } else {
-        showNotice('Aucun rapport en attente pour ce ticket.')
-      }
-    } catch {
-      showNotice('Impossible de charger le rapport.')
-    }
   }
 
   async function validateReport(reportId, decision) {
@@ -601,11 +660,16 @@ function SubDirecteurView() {
         ? 'Rapport validé — envoyé à la Directrice.'
         : 'Rapport rejeté — renvoyé au chef de service.',
     )
-    reload()
-    loadPendingReports()
+    setReportsRefreshKey((k) => k + 1)
+    reportStats.reload()
+    openStats.reload()
   }
 
-  if (loading) return <p className="text-sm">Chargement...</p>
+  async function refreshWorkspace() {
+    await Promise.all([openStats.reload(), reportStats.reload()])
+    setDashboardRefreshToken((t) => t + 1)
+    setOpenPanelRefreshToken((t) => t + 1)
+  }
 
   return (
     <div className="space-y-4">
@@ -616,130 +680,112 @@ function SubDirecteurView() {
       )}
 
       <section className="rounded border border-outline-variant bg-surface-lowest p-4 shadow-sm">
-        <h2 className="text-xl font-semibold">Tableau de bord — Sous-directeur DANTIC</h2>
-        <p className="text-sm text-on-surface-variant">{user?.service_label}</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Pilotage — Sous-directeur DANTIC</h2>
+            <p className="text-sm text-on-surface-variant">{formatServiceLabel(user?.service_label)}</p>
+          </div>
+          <RefreshButton onRefresh={refreshWorkspace} />
+        </div>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-3">
-        <DashboardButton
-          label="Tickets reçus"
-          count={counts.received}
-          active={activeView === 'received'}
-          onClick={() => setActiveView('received')}
+      <section className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <DashboardTabButton
+          label="Tableau de bord"
+          count={0}
+          active={activeView === 'dashboard'}
+          onClick={() => setActiveView('dashboard')}
         />
-        <DashboardButton
-          label="Tickets affectés"
-          count={counts.assigned}
-          active={activeView === 'assigned'}
-          onClick={() => setActiveView('assigned')}
+        <DashboardTabButton
+          label="Tickets ouverts"
+          count={tabTotals.open}
+          hasNew={hasNew('open')}
+          active={activeView === 'open'}
+          onClick={() => setActiveView('open')}
         />
-        <DashboardButton
+        <DashboardTabButton
           label="Validation des rapports"
-          count={counts.reports}
+          count={tabTotals.reports}
+          reports={reportStats.stats?.reports}
+          variant="reports"
+          hasNew={hasNew('reports')}
+          consulted={wasConsulted('reports')}
           active={activeView === 'reports'}
           onClick={() => setActiveView('reports')}
         />
+        <DashboardTabButton
+          label="Archives directrice"
+          icon={Archive}
+          count={0}
+          active={activeView === 'archives'}
+          onClick={() => setActiveView('archives')}
+        />
+        <DashboardTabButton
+          label="Contraintes"
+          icon={AlertTriangle}
+          count={0}
+          active={activeView === 'constraints'}
+          onClick={() => setActiveView('constraints')}
+        />
       </section>
 
-      {activeView === 'received' && (
-        <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
-          <div className="border-b border-outline-variant p-3">
-            <h3 className="font-semibold">Tickets reçus</h3>
-            <p className="text-xs text-on-surface-variant">
-              Transmis par la Directrice — en attente de transmission à un chef de service
-            </p>
-          </div>
-          <TicketTable
-            tickets={receivedFilters.filteredTickets}
-            mode="received"
-            priorityFilter={receivedFilters.priorityFilter}
-            setPriorityFilter={receivedFilters.setPriorityFilter}
-            dateFilter={receivedFilters.dateFilter}
-            setDateFilter={receivedFilters.setDateFilter}
-            assignees={chefs}
-            selectedByTicket={selectedByTicket}
-            setSelectedByTicket={setSelectedByTicket}
-            editingIds={editingIds}
-            setEditingIds={setEditingIds}
-            onAssign={forwardToChef}
-            onOpenReport={openReportForTicket}
-            busyId={busyId}
+      {activeView === 'dashboard' && (
+        <section className="rounded border border-outline-variant bg-surface-lowest p-4 shadow-sm">
+          <ExecutiveDashboard
+            showSubDirectorateFilter={false}
+            showRefreshButton={false}
+            onNavigateToOpenTickets={() => setActiveView('open')}
+            refreshToken={dashboardRefreshToken}
           />
         </section>
       )}
 
-      {activeView === 'assigned' && (
-        <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
-          <div className="border-b border-outline-variant p-3">
-            <h3 className="font-semibold">Tickets affectés</h3>
-            <p className="text-xs text-on-surface-variant">Dossiers dispatchés vers les chefs de service et équipes</p>
-            <div className="mt-2 flex flex-wrap gap-4 text-xs uppercase text-on-surface-variant">
-              <ServiceFilterHeader
-                value={assignedFilters.serviceFilter}
-                onChange={assignedFilters.setServiceFilter}
-                services={sdServices}
-              />
-            </div>
-          </div>
-          <TicketTable
-            tickets={assignedFilters.filteredTickets}
-            mode="assigned"
-            priorityFilter={assignedFilters.priorityFilter}
-            setPriorityFilter={assignedFilters.setPriorityFilter}
-            dateFilter={assignedFilters.dateFilter}
-            setDateFilter={assignedFilters.setDateFilter}
-            statusFilter={assignedFilters.statusFilter}
-            setStatusFilter={assignedFilters.setStatusFilter}
-            showStatusFilter
-            assignees={chefs}
-            selectedByTicket={selectedByTicket}
-            setSelectedByTicket={setSelectedByTicket}
-            editingIds={editingIds}
-            setEditingIds={setEditingIds}
-            onAssign={forwardToChef}
-            onOpenReport={openReportForTicket}
-            busyId={busyId}
-          />
-        </section>
+      {activeView === 'open' && (
+        <OpenTicketsPanel
+          itemLabel="incidents"
+          showRefreshButton={false}
+          refreshToken={openPanelRefreshToken}
+        />
       )}
 
       {activeView === 'reports' && (
-        <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
-          <div className="border-b border-outline-variant p-3">
+        <section className="space-y-3">
+          <div>
             <h3 className="font-semibold">Validation des rapports</h3>
             <p className="text-xs text-on-surface-variant">
               Rapports techniques des tickets résolus — à valider ou rejeter
             </p>
           </div>
-          {pendingReports.length === 0 ? (
-            <p className="p-4 text-sm text-on-surface-variant">Aucun rapport en attente de validation.</p>
-          ) : (
-            <div className="divide-y divide-outline-variant">
-              {pendingReports.map((report) => (
-                <button
-                  key={report.id}
-                  type="button"
-                  className="flex w-full items-start justify-between gap-3 p-3 text-left hover:bg-surface-low"
-                  onClick={() => {
-                    setReportModal(report)
-                    setReportComment('')
-                  }}
-                >
-                  <div>
-                    <p className="text-sm font-semibold">{report.ticket_number}</p>
-                    <p className="text-xs text-on-surface-variant">{truncateText(report.body, 100)}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant">
-                      {report.author_name} — {formatEmittedDate(report.created_at)}
-                    </p>
-                  </div>
-                  <span className={`shrink-0 rounded px-2 py-1 text-xs ${getPriorityBadgeClass(report.priority)}`}>
-                    {report.priority}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
+          <PendingReportsPanel
+            key={reportsRefreshKey}
+            scope="sub_directorate"
+            onSelectReport={(report) => {
+              setReportModal(report)
+              setReportComment('')
+            }}
+            emptyMessage="Aucun rapport en attente de validation."
+          />
         </section>
+      )}
+
+      {activeView === 'archives' && (
+        <section className="space-y-3">
+          <div>
+            <h3 className="font-semibold">Tickets archivés par la directrice</h3>
+            <p className="text-xs text-on-surface-variant">
+              Rapports ticket validés définitivement — votre sous-direction uniquement
+            </p>
+          </div>
+          <PaginatedReportsPanel
+            endpoint="/reports/validated"
+            emptyMessage="Aucun ticket archivé par la directrice pour votre sous-direction."
+            variant="table"
+          />
+        </section>
+      )}
+
+      {activeView === 'constraints' && (
+        <UnresolvedConstraintsPanel focusTicketId={focusTicketId} />
       )}
 
       <Modal

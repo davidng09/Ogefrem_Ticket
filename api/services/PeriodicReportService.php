@@ -53,58 +53,7 @@ function enrichUserForPeriodic(PDO $pdo, array $user): array
 
 function maybeArchiveAgentResolvedTickets(PDO $pdo, array $user): int
 {
-    if (($user['role_code'] ?? '') !== 'TECHNICIEN') {
-        return 0;
-    }
-    $agentId = (int)$user['id'];
-    $now = new DateTimeImmutable('now');
-    if ((int)$now->format('j') !== 1) {
-        return 0;
-    }
-    $prev = $now->modify('-1 month');
-    $year = (int)$prev->format('Y');
-    $month = (int)$prev->format('n');
-
-    $bundleStmt = $pdo->prepare(
-        'SELECT id FROM monthly_agent_bundles WHERE sender_id = :agent_id AND year = :year AND month = :month LIMIT 1'
-    );
-    $bundleStmt->execute(['agent_id' => $agentId, 'year' => $year, 'month' => $month]);
-    if (!$bundleStmt->fetch()) {
-        return 0;
-    }
-
-    $ticketsStmt = $pdo->prepare(
-        "SELECT t.id, t.closed_at FROM tickets t
-         WHERE t.assigned_technician_id = :agent_id AND t.status = 'resolu' AND t.closed_at IS NOT NULL
-           AND YEAR(t.closed_at) = :year AND MONTH(t.closed_at) = :month
-           AND NOT EXISTS (SELECT 1 FROM agent_resolved_archives ara WHERE ara.ticket_id = t.id AND ara.agent_id = :agent_id)"
-    );
-    $ticketsStmt->execute(['agent_id' => $agentId, 'year' => $year, 'month' => $month]);
-    $tickets = $ticketsStmt->fetchAll();
-    $archived = 0;
-
-    $insert = $pdo->prepare(
-        'INSERT INTO agent_resolved_archives (agent_id, ticket_id, year, month, week_index)
-         VALUES (:agent_id, :ticket_id, :year, :month, :week_index)'
-    );
-
-    foreach ($tickets as $t) {
-        $weekIndex = ticketWeekIndexForMonth((string)$t['closed_at'], $year, $month) ?? 1;
-        try {
-            $insert->execute([
-                'agent_id' => $agentId,
-                'ticket_id' => (int)$t['id'],
-                'year' => $year,
-                'month' => $month,
-                'week_index' => $weekIndex,
-            ]);
-            $archived++;
-        } catch (PDOException) {
-            // déjà archivé
-        }
-    }
-
-    return $archived;
+    return 0;
 }
 
 function listWeeklyReports(PDO $pdo, array $user, int $year, int $month): array
@@ -131,6 +80,12 @@ function listWeeklyReports(PDO $pdo, array $user, int $year, int $month): array
             'label' => $w['label'],
             'report' => $existing,
             'template' => $existing ? null : weeklyReportTemplate($user, $w, $year, $month),
+            'resolution_count' => countWeeklyResolutions(
+                $pdo,
+                (int)$user['id'],
+                (string)$w['week_start'],
+                (string)$w['week_end']
+            ),
         ];
     }
 
@@ -273,11 +228,19 @@ function sendMonthlyBundle(PDO $pdo, array $user, array $input): array
     );
     $recipientStmt->execute(['id' => $recipientId]);
     $recipient = $recipientStmt->fetch();
-    if (!$recipient || $recipient['role_code'] !== 'TECHNICIEN') {
+    $allowedRecipientRoles = ['TECHNICIEN', 'CHEF_SERVICE', 'CHEF_BUREAU'];
+    if (!$recipient || !in_array($recipient['role_code'], $allowedRecipientRoles, true)) {
         jsonResponse(['ok' => false, 'message' => 'Destinataire invalide.'], 422);
     }
     if ((int)$recipient['sub_directorate_id'] !== (int)$user['sub_directorate_id']) {
         jsonResponse(['ok' => false, 'message' => 'Le destinataire doit être de la même sous-direction.'], 422);
+    }
+    if ($recipient['role_code'] === 'CHEF_SERVICE') {
+        $senderServiceId = (int)($user['service_id'] ?? 0);
+        $recipientServiceId = (int)($recipient['service_id'] ?? 0);
+        if ($senderServiceId > 0 && $recipientServiceId > 0 && $senderServiceId !== $recipientServiceId) {
+            jsonResponse(['ok' => false, 'message' => 'Le chef de service doit appartenir à votre service.'], 422);
+        }
     }
 
     if ($body === '') {
@@ -343,24 +306,175 @@ function listMonthlyBundleInbox(PDO $pdo, int $agentId): array
          ORDER BY b.year DESC, b.month DESC, b.sent_at DESC'
     );
     $stmt->execute(['recipient_id' => $agentId]);
-    return $stmt->fetchAll();
+    $rows = $stmt->fetchAll();
+
+    foreach ($rows as &$row) {
+        $cStmt = $pdo->prepare(
+            'SELECT mbc.id, mbc.body, mbc.created_at, u.prenom, u.nom
+             FROM monthly_bundle_comments mbc
+             JOIN users u ON u.id = mbc.author_id
+             WHERE mbc.bundle_id = :bundle_id
+             ORDER BY mbc.created_at ASC'
+        );
+        $cStmt->execute(['bundle_id' => (int)$row['id']]);
+        $row['comments'] = $cStmt->fetchAll();
+    }
+    unset($row);
+
+    return $rows;
+}
+
+function addMonthlyBundleComment(PDO $pdo, array $user, int $bundleId, string $body): void
+{
+    $role = $user['role_code'] ?? '';
+    if (!in_array($role, ['CHEF_SERVICE', 'SUPER_ADMIN'], true)) {
+        jsonResponse(['ok' => false, 'message' => 'Non autorisé.'], 403);
+    }
+    $body = trim($body);
+    if ($body === '') {
+        jsonResponse(['ok' => false, 'message' => 'Commentaire requis.'], 422);
+    }
+
+    $stmt = $pdo->prepare('SELECT id, recipient_id FROM monthly_agent_bundles WHERE id = :id LIMIT 1');
+    $stmt->execute(['id' => $bundleId]);
+    $bundle = $stmt->fetch();
+    if (!$bundle) {
+        jsonResponse(['ok' => false, 'message' => 'Bundle introuvable.'], 404);
+    }
+    if ((int)$bundle['recipient_id'] !== (int)$user['id'] && $role !== 'SUPER_ADMIN') {
+        jsonResponse(['ok' => false, 'message' => 'Ce bundle ne vous est pas destiné.'], 403);
+    }
+
+    $ins = $pdo->prepare(
+        'INSERT INTO monthly_bundle_comments (bundle_id, author_id, body) VALUES (:bundle_id, :author_id, :body)'
+    );
+    $ins->execute([
+        'bundle_id' => $bundleId,
+        'author_id' => (int)$user['id'],
+        'body' => $body,
+    ]);
+}
+
+function getMonthlySendAlerts(PDO $pdo, array $user): array
+{
+    $role = $user['role_code'] ?? '';
+    $year = (int)date('Y');
+    $month = (int)date('n');
+    $alerts = [];
+
+    if ($role === 'CHEF_SERVICE') {
+        $serviceId = (int)($user['service_id'] ?? 0);
+        $sdId = (int)($user['sub_directorate_id'] ?? 0);
+        $senderStmt = $pdo->prepare(
+            'SELECT u.id, u.matricule, u.prenom, u.nom
+             FROM users u
+             JOIN roles r ON r.id = u.role_id
+             WHERE u.is_active = 1 AND u.sub_directorate_id = :sd_id
+               AND r.code IN (\'TECHNICIEN\', \'CHEF_BUREAU\')
+               AND (:service_id = 0 OR u.service_id = :service_id2)'
+        );
+        $senderStmt->execute(['sd_id' => $sdId, 'service_id' => $serviceId, 'service_id2' => $serviceId]);
+        foreach ($senderStmt->fetchAll() as $sender) {
+            $bundleStmt = $pdo->prepare(
+                'SELECT id FROM monthly_agent_bundles WHERE sender_id = :sender_id AND year = :year AND month = :month LIMIT 1'
+            );
+            $bundleStmt->execute([
+                'sender_id' => (int)$sender['id'],
+                'year' => $year,
+                'month' => $month,
+            ]);
+            if (!$bundleStmt->fetch()) {
+                $alerts[] = [
+                    'kind' => 'missing_agent_bundle',
+                    'label' => trim($sender['prenom'] . ' ' . $sender['nom']) . ' (' . $sender['matricule'] . ')',
+                    'year' => $year,
+                    'month' => $month,
+                ];
+            }
+        }
+    }
+
+    if (in_array($role, ['DIRECTEUR', 'SUPER_ADMIN'], true)) {
+        $sdStmt = $pdo->query('SELECT id, code, label FROM sub_directorates ORDER BY id ASC');
+        foreach ($sdStmt->fetchAll() as $sd) {
+            $pdfStmt = $pdo->prepare(
+                'SELECT id FROM monthly_subdirectorate_reports
+                 WHERE sub_directorate_id = :sd_id AND year = :year AND month = :month AND visibility = \'active\'
+                 LIMIT 1'
+            );
+            $pdfStmt->execute(['sd_id' => (int)$sd['id'], 'year' => $year, 'month' => $month]);
+            if (!$pdfStmt->fetch()) {
+                $alerts[] = [
+                    'kind' => 'missing_sd_pdf',
+                    'label' => $sd['label'] ?? $sd['code'],
+                    'year' => $year,
+                    'month' => $month,
+                ];
+            }
+        }
+    }
+
+    return ['alerts' => $alerts, 'year' => $year, 'month' => $month];
+}
+
+function countWeeklyResolutions(PDO $pdo, int $userId, string $weekStart, string $weekEnd): int
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM tickets t
+         WHERE t.assigned_technician_id = :user_id
+           AND t.status IN (\'resolu\', \'non_resolu\')
+           AND t.closed_at IS NOT NULL
+           AND DATE(t.closed_at) BETWEEN :start AND :end'
+    );
+    $stmt->execute(['user_id' => $userId, 'start' => $weekStart, 'end' => $weekEnd]);
+    return (int)$stmt->fetchColumn();
 }
 
 function listAgentsSameSubDirectorate(PDO $pdo, array $user): array
 {
-    $stmt = $pdo->prepare(
-        'SELECT u.id, u.matricule, u.nom, u.prenom, u.service_label
+    return listMonthlyBundleRecipients($pdo, $user);
+}
+
+function listMonthlyBundleRecipients(PDO $pdo, array $user): array
+{
+    $sdId = (int)($user['sub_directorate_id'] ?? 0);
+    $serviceId = (int)($user['service_id'] ?? 0);
+    $selfId = (int)$user['id'];
+    $recipients = [];
+
+    $agentStmt = $pdo->prepare(
+        'SELECT u.id, u.matricule, u.nom, u.prenom, u.service_label, r.code AS role_code
          FROM users u
          JOIN roles r ON r.id = u.role_id
          WHERE r.code = \'TECHNICIEN\' AND u.is_active = 1
            AND u.sub_directorate_id = :sd_id AND u.id != :self_id
          ORDER BY u.nom ASC, u.prenom ASC'
     );
-    $stmt->execute([
-        'sd_id' => (int)$user['sub_directorate_id'],
-        'self_id' => (int)$user['id'],
-    ]);
-    return $stmt->fetchAll();
+    $agentStmt->execute(['sd_id' => $sdId, 'self_id' => $selfId]);
+    foreach ($agentStmt->fetchAll() as $row) {
+        $row['recipient_kind'] = 'agent';
+        $recipients[] = $row;
+    }
+
+    $chefSql = 'SELECT u.id, u.matricule, u.nom, u.prenom, u.service_label, r.code AS role_code
+         FROM users u
+         JOIN roles r ON r.id = u.role_id
+         WHERE r.code = \'CHEF_SERVICE\' AND u.is_active = 1
+           AND u.sub_directorate_id = :sd_id AND u.id != :self_id';
+    $chefParams = ['sd_id' => $sdId, 'self_id' => $selfId];
+    if ($serviceId > 0) {
+        $chefSql .= ' AND u.service_id = :service_id';
+        $chefParams['service_id'] = $serviceId;
+    }
+    $chefSql .= ' ORDER BY u.nom ASC, u.prenom ASC';
+    $chefStmt = $pdo->prepare($chefSql);
+    $chefStmt->execute($chefParams);
+    foreach ($chefStmt->fetchAll() as $row) {
+        $row['recipient_kind'] = 'chef_service';
+        $recipients[] = $row;
+    }
+
+    return $recipients;
 }
 
 function monthlyStorageDir(): string
@@ -372,8 +486,43 @@ function monthlyStorageDir(): string
     return $dir;
 }
 
-function uploadMonthlySubdirectorateReport(PDO $pdo, array $user, array $file, int $year, int $month): array
+function parseMonthlyReportPaginationFilters(): array
 {
+    return [
+        'year' => isset($_GET['year']) ? (int)$_GET['year'] : null,
+        'month' => isset($_GET['month']) ? (int)$_GET['month'] : null,
+        'sub_directorate_id' => isset($_GET['sub_directorate_id']) ? (int)$_GET['sub_directorate_id'] : null,
+        'page' => max(1, (int)($_GET['page'] ?? 1)),
+        'per_page' => min(50, max(5, (int)($_GET['per_page'] ?? 12))),
+    ];
+}
+
+function findMonthlyReportByPeriod(PDO $pdo, int $subDirectorateId, int $year, int $month): ?array
+{
+    $stmt = $pdo->prepare(
+        'SELECT mr.*, sd.label AS sub_directorate_label,
+                CONCAT(u.prenom, \' \', u.nom) AS uploader_name
+         FROM monthly_subdirectorate_reports mr
+         JOIN sub_directorates sd ON sd.id = mr.sub_directorate_id
+         JOIN users u ON u.id = mr.uploader_id
+         WHERE mr.sub_directorate_id = :sd_id AND mr.year = :year AND mr.month = :month
+           AND mr.visibility != \'deleted\'
+         LIMIT 1'
+    );
+    $stmt->execute(['sd_id' => $subDirectorateId, 'year' => $year, 'month' => $month]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+function uploadMonthlySubdirectorateReport(
+    PDO $pdo,
+    array $user,
+    array $file,
+    int $year,
+    int $month,
+    ?int $subDirectorateId = null,
+    bool $replaceExisting = false
+): array {
     if ($year < 2000 || $month < 1 || $month > 12) {
         jsonResponse(['ok' => false, 'message' => 'Période invalide.'], 422);
     }
@@ -382,6 +531,34 @@ function uploadMonthlySubdirectorateReport(PDO $pdo, array $user, array $file, i
     }
     if (($file['size'] ?? 0) > 10 * 1024 * 1024) {
         jsonResponse(['ok' => false, 'message' => 'Fichier trop volumineux (max 10 Mo).'], 422);
+    }
+
+    $sdId = $subDirectorateId ?? (int)($user['sub_directorate_id'] ?? 0);
+    if ($sdId <= 0) {
+        jsonResponse(['ok' => false, 'message' => 'Sous-direction requise.'], 422);
+    }
+
+    $role = $user['role_code'] ?? '';
+    if (in_array($role, ['TECHNICIEN', 'CHEF_BUREAU'], true) && (int)($user['sub_directorate_id'] ?? 0) !== $sdId) {
+        jsonResponse(['ok' => false, 'message' => 'Sous-direction non autorisée.'], 403);
+    }
+    if ($role === 'SOUS_DIRECTEUR' && (int)($user['sub_directorate_id'] ?? 0) !== $sdId) {
+        jsonResponse(['ok' => false, 'message' => 'Sous-direction non autorisée.'], 403);
+    }
+
+    $existing = findMonthlyReportByPeriod($pdo, $sdId, $year, $month);
+    if ($existing && !$replaceExisting) {
+        jsonResponse([
+            'ok' => false,
+            'message' => 'Un rapport existe déjà pour cette sous-direction et cette période.',
+            'existing' => [
+                'id' => (int)$existing['id'],
+                'original_name' => $existing['original_name'],
+                'uploaded_at' => $existing['uploaded_at'],
+                'uploader_name' => $existing['uploader_name'],
+                'sub_directorate_label' => $existing['sub_directorate_label'],
+            ],
+        ], 409);
     }
 
     $name = (string)($file['name'] ?? 'rapport');
@@ -407,13 +584,34 @@ function uploadMonthlySubdirectorateReport(PDO $pdo, array $user, array $file, i
         jsonResponse(['ok' => false, 'message' => 'Échec enregistrement fichier.'], 500);
     }
 
+    if ($existing && $replaceExisting) {
+        $oldPath = monthlyStorageDir() . '/' . $existing['file_path'];
+        if (is_file($oldPath)) {
+            @unlink($oldPath);
+        }
+        $upd = $pdo->prepare(
+            'UPDATE monthly_subdirectorate_reports
+             SET uploader_id = :uploader_id, file_path = :file_path, original_name = :original_name,
+                 mime_type = :mime_type, uploaded_at = NOW(), visibility = \'active\'
+             WHERE id = :id'
+        );
+        $upd->execute([
+            'uploader_id' => (int)$user['id'],
+            'file_path' => $stored,
+            'original_name' => $name,
+            'mime_type' => $allowed[$ext],
+            'id' => (int)$existing['id'],
+        ]);
+        return ['id' => (int)$existing['id'], 'replaced' => true];
+    }
+
     $ins = $pdo->prepare(
         'INSERT INTO monthly_subdirectorate_reports
          (sub_directorate_id, uploader_id, year, month, file_path, original_name, mime_type)
          VALUES (:sd_id, :uploader_id, :year, :month, :file_path, :original_name, :mime_type)'
     );
     $ins->execute([
-        'sd_id' => (int)$user['sub_directorate_id'],
+        'sd_id' => $sdId,
         'uploader_id' => (int)$user['id'],
         'year' => $year,
         'month' => $month,
@@ -432,7 +630,103 @@ function uploadMonthlySubdirectorateReport(PDO $pdo, array $user, array $file, i
         "Un rapport mensuel a été déposé pour {$month}/{$year}."
     );
 
-    return ['id' => $reportId];
+    return ['id' => $reportId, 'replaced' => false];
+}
+
+function listMonthlyReportsForDirectorPaginated(PDO $pdo, ?string $visibility, array $filters): array
+{
+    $page = (int)$filters['page'];
+    $perPage = (int)$filters['per_page'];
+    $offset = ($page - 1) * $perPage;
+
+    $sql = 'SELECT mr.*, sd.label AS sub_directorate_label, sd.code AS sub_directorate_code,
+                   CONCAT(u.prenom, \' \', u.nom) AS uploader_name
+            FROM monthly_subdirectorate_reports mr
+            JOIN sub_directorates sd ON sd.id = mr.sub_directorate_id
+            JOIN users u ON u.id = mr.uploader_id
+            WHERE mr.visibility != \'deleted\'';
+    $params = [];
+    if ($visibility !== null && in_array($visibility, ['active', 'archived'], true)) {
+        $sql .= ' AND mr.visibility = :visibility';
+        $params['visibility'] = $visibility;
+    }
+    if (!empty($filters['year'])) {
+        $sql .= ' AND mr.year = :filter_year';
+        $params['filter_year'] = (int)$filters['year'];
+    }
+    if (!empty($filters['month'])) {
+        $sql .= ' AND mr.month = :filter_month';
+        $params['filter_month'] = (int)$filters['month'];
+    }
+    if (!empty($filters['sub_directorate_id'])) {
+        $sql .= ' AND mr.sub_directorate_id = :filter_sd';
+        $params['filter_sd'] = (int)$filters['sub_directorate_id'];
+    }
+
+    $countSql = 'SELECT COUNT(*) FROM (' . $sql . ') AS counted';
+    $countStmt = $pdo->prepare($countSql);
+    $countStmt->execute($params);
+    $total = (int)$countStmt->fetchColumn();
+
+    $sql .= ' ORDER BY mr.year DESC, mr.month DESC, mr.uploaded_at DESC LIMIT :limit OFFSET :offset';
+    $stmt = $pdo->prepare($sql);
+    foreach ($params as $k => $v) {
+        $stmt->bindValue(':' . $k, $v);
+    }
+    $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->execute();
+    $rows = $stmt->fetchAll();
+
+    foreach ($rows as &$row) {
+        $cStmt = $pdo->prepare(
+            'SELECT mrc.*, CONCAT(u.prenom, \' \', u.nom) AS author_name
+             FROM monthly_report_comments mrc
+             JOIN users u ON u.id = mrc.author_id
+             WHERE mrc.monthly_report_id = :id ORDER BY mrc.created_at ASC'
+        );
+        $cStmt->execute(['id' => (int)$row['id']]);
+        $row['comments'] = $cStmt->fetchAll();
+    }
+    unset($row);
+
+    $yearsStmt = $pdo->prepare(
+        'SELECT DISTINCT mr.year AS y FROM monthly_subdirectorate_reports mr WHERE mr.visibility != \'deleted\''
+        . ($visibility ? ' AND mr.visibility = :visibility' : '')
+        . ' ORDER BY y DESC'
+    );
+    if ($visibility) {
+        $yearsStmt->execute(['visibility' => $visibility]);
+    } else {
+        $yearsStmt->execute();
+    }
+    $availableYears = array_map('intval', array_column($yearsStmt->fetchAll(), 'y'));
+
+    $groupedByYear = [];
+    foreach ($rows as $row) {
+        $y = (int)$row['year'];
+        if (!isset($groupedByYear[$y])) {
+            $groupedByYear[$y] = [];
+        }
+        $groupedByYear[$y][] = $row;
+    }
+
+    return [
+        'reports' => $rows,
+        'grouped_by_year' => $groupedByYear,
+        'pagination' => [
+            'page' => $page,
+            'per_page' => $perPage,
+            'total' => $total,
+            'total_pages' => $perPage > 0 ? (int)ceil($total / $perPage) : 0,
+        ],
+        'filters' => [
+            'year' => $filters['year'],
+            'month' => $filters['month'],
+            'sub_directorate_id' => $filters['sub_directorate_id'],
+        ],
+        'available_years' => $availableYears,
+    ];
 }
 
 function listMonthlyReportsForDirector(PDO $pdo, ?string $visibility = null): array

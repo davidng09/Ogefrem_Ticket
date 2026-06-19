@@ -1,402 +1,284 @@
-# OGEFREM_Tickets
+# OGEFREM Tickets
 
-Application web de **gestion des tickets IT** pour l’OGEFREM (pannes matérielles, logicielles, réseau).  
-La **Direction DANTIC** traite les signalements selon une hiérarchie : Responsable DANTIC → sous-directions → chefs de service → techniciens.
+Application web de gestion des tickets IT pour l’OGEFREM. La **DANTIC** traite les signalements : chefs de service, agents, validation hiérarchique des rapports, rapports périodiques.
 
-## Architecture du projet
+**Stack :** React (Vite) + API PHP (sessions) + MySQL `ogefrem_ops_hub`.
+
+---
+
+## Structure du projet
 
 ```text
 Ogefrem/
-├── api/                 # Backend PHP (REST + sessions)
-├── frontend/            # Application React (interface active)
-├── DataBase/            # Schéma SQL, seeds, migrations
-├── legacy/              # Maquettes HTML de référence (statiques)
-├── stark_precision/     # Design system (couleurs, typo)
-├── index.html           # Page d’accueil locale (liens utiles)
-└── README.md            # Ce fichier
+├── api/              Backend REST
+├── frontend/         Interface React
+└── DataBase/
+    ├── schema.sql         Schéma complet (installation neuve)
+    ├── seed.sql           Données DANTIC (rôles, users, routage)
+    ├── seed_demo.sql      Données opérationnelles (tickets, rapports, périodiques)
+    ├── migrations_up.sql  Migration cumulative (base existante)
+    └── tools/             Utilitaires (hash mot de passe)
 ```
 
-| Dossier | Rôle |
-|---------|------|
-| **`api/`** | API PHP : authentification DANTIC, tickets, rapports, notifications, admin. Point d’entrée : `api/index.php`. |
-| **`frontend/`** | Interface React + Vite + Tailwind. Portail public, dashboards par rôle, simulateur de rôles (dev). |
-| **`DataBase/`** | Scripts MySQL/MariaDB : création de la base `ogefrem_ops_hub`, comptes de test, migrations futures. |
-| **`legacy/`** | Anciennes maquettes HTML (non branchées à l’API). Utiles pour comparer le design. |
-| **`stark_precision/`** | Documentation du design system « Stark Precision ». |
+---
 
-## Stack technique et outils de conception
+## Installation
 
-Outils et technologies utilisés pour **concevoir**, **développer** et **exploiter** l’application en local.
+### Prérequis
 
-### Conception et design
+- XAMPP (Apache + MySQL)
+- Node.js 20+
+- Projet dans `c:\xampp\htdocs\Ogefrem`
 
-| Outil / livrable | Rôle |
-|------------------|------|
-| **Maquettes HTML** (`legacy/`) | Prototypes statiques (portail, directrice, sous-direction, agent) servant de référence visuelle avant migration React. |
-| **Design system Stark Precision** (`stark_precision/DESIGN.md`) | Palette, typo Geist, espacements, composants (badges, cartes, boutons) — tokens repris dans Tailwind (`frontend/src/index.css`). |
-| **Logo OGEFREM** (`frontend/public/ogefrem_LOGO.png`) | Identité visuelle sur le portail public et les espaces connectés. |
-
-### Backend (API)
-
-| Technologie | Usage |
-|-------------|--------|
-| **PHP** (natif, sans framework) | API REST, routage dans `api/index.php`, services métier (`TicketService`, `ReportService`, `AuthService`…). |
-| **PDO MySQL** | Accès base de données, requêtes paramétrées. |
-| **Sessions PHP** | Authentification DANTIC (cookies de session). |
-| **Apache** (XAMPP) | Hébergement de l’API sous `http://localhost/Ogefrem/api`. |
-
-### Frontend (interface active)
-
-| Technologie | Version (indicative) | Usage |
-|-------------|---------------------|--------|
-| **React** | 19 | Composants, état local, contexte auth. |
-| **Vite** | 8 | Serveur de dev, build production, HMR. |
-| **React Router** | 7 | Routes publiques / protégées par rôle. |
-| **Tailwind CSS** | 4 | Styles utilitaires + thème `@theme` (couleurs Stark Precision). |
-| **Lucide React** | — | Icônes (cloche, utilisateurs, statuts…). |
-| **ESLint** | 10 | Qualité du code JavaScript/JSX. |
-
-### Base de données
-
-| Outil | Usage |
-|-------|--------|
-| **MySQL / MariaDB** (XAMPP) | Base `ogefrem_ops_hub`, tables tickets, rapports, utilisateurs, notifications. |
-| **phpMyAdmin** | Import du schéma, seeds et migrations SQL. |
-| **Scripts SQL** (`DataBase/`) | Schéma initial, données de test, migrations datées (`YYYYMMDD_*.sql`). |
-| **PHP CLI** (`DataBase/tools/generate_password_hash.php`) | Génération des hash `password_hash()` pour les comptes de test. |
-
-### Environnement et outils de développement
-
-| Outil | Usage |
-|-------|--------|
-| **XAMPP** | Apache + PHP + MySQL en un seul environnement Windows. |
-| **Node.js** (20+) + **npm** | Dépendances et scripts du frontend (`npm run dev`, `npm run build`). |
-| **PowerShell** | Commandes locales sous Windows (voir `LANCEMENT.md`). |
-| **Git** | Versionnement du dépôt. |
-| **Navigateur moderne** | Test du portail (`:5173`) et de l’API (`/api/health`), cookies de session. |
-
-### Démarche de réalisation
-
-1. **Maquettes** HTML statiques pour valider les écrans par rôle.
-2. **Design system** documenté puis appliqué en React + Tailwind.
-3. **API PHP** branchée sur MySQL, avec workflow tickets / rapports / notifications.
-4. **Frontend React** (Vite) consommant l’API via `fetch` et variables d’environnement (`VITE_API_URL`).
-5. **Évolutions** incrémentales via migrations SQL (sans modifier le schéma initial déployé).
-
-## Fonctionnement (résumé)
-
-1. **Tout agent OGEFREM** dépose un ticket via le **portail public** (sans mot de passe).
-2. Le ticket arrive chez la **Directrice DANTIC**, qui fixe la priorité et l’**escalade** vers une sous-direction :
-   - **Infrastructures, Réseaux et Télécoms** (IRT — hardware, réseau, impression…)
-   - **Analyse et Développement des Applications** (A&D — logiciels, applications…)
-3. Le **sous-directeur** transmet au **chef de service**, qui **assigne** un **technicien**.
-4. Le technicien **prend en charge**, rédige un **rapport** et marque le ticket **résolu** (clôture immédiate).
-5. Le rapport remonte la hiérarchie (chef → sous-directeur → direction) avec validation ou rejet (notifications in-app).
-
-## Prérequis
-
-Installer sur la machine de développement :
-
-| Outil | Version conseillée | Usage |
-|-------|-------------------|--------|
-| [XAMPP](https://www.apachefriends.org/) | Dernière stable | Apache + PHP + MySQL/MariaDB |
-| [Node.js](https://nodejs.org/) | 20+ LTS | Frontend React (`npm`) |
-| [Git](https://git-scm.com/) | Optionnel | Versionnement |
-
-Vérifier que ces services tournent dans XAMPP :
-
-- **Apache**
-- **MySQL** (ou MariaDB)
-
-Extensions PHP utiles (souvent déjà activées dans XAMPP) : `pdo_mysql`, `json`, `session`.
-
-## 1. Installation du projet
-
-Cloner ou copier le projet dans le dossier web XAMPP :
-
-```text
-c:\xampp\htdocs\Ogefrem
-```
-
-URL de base : **http://localhost/Ogefrem/**
-
-### Frontend (Node)
-
-Sous **PowerShell** (recommandé sous Windows) :
+### Base de données (nouvelle installation)
 
 ```powershell
-cd c:\xampp\htdocs\Ogefrem\frontend
+mysql -u root < DataBase\schema.sql
+mysql -u root ogefrem_ops_hub < DataBase\seed.sql
+mysql -u root ogefrem_ops_hub < DataBase\seed_demo.sql
+```
+
+### Base de données (mise à jour d'une base existante)
+
+```powershell
+mysql -u root ogefrem_ops_hub < DataBase\migrations_up.sql
+```
+
+Mot de passe comptes test : **`Test@2026`**
+
+### Frontend
+
+```powershell
+cd frontend
 Copy-Item .env.example .env
 npm install
-```
-
-> Sous PowerShell, enchaîner les commandes avec `;` (et non `&&`, qui n’est pas supporté par défaut).
-
-Le fichier `frontend/.env` est créé à partir de `.env.example`. Contenu attendu :
-
-```env
-VITE_API_URL=http://localhost/Ogefrem/api
-VITE_DEV_ROLE_SIMULATOR=true
-```
-
-Si vous modifiez `.env`, **arrêtez puis relancez** `npm run dev` pour que Vite prenne en compte les changements.
-
-## 2. Configuration de la base de données
-
-### Étape A — Créer la base et les tables
-
-1. Ouvrir **phpMyAdmin** : http://localhost/phpmyadmin  
-2. Onglet **Importer**  
-3. Importer dans l’ordre (installation neuve recommandée) :
-   - `DataBase/001_schema_complet.sql`
-   - `DataBase/002_donnees_dantic.sql`
-
-Ou l’ancienne procédure : `DataBase/schema/001_initial_schema.sql` + migrations.
-
-Si la base existe déjà, importer aussi :
-   - `DataBase/migrations/20260606_periodic_reports.sql` (rapports hebdo/mensuels)
-
-### Étape B — Mot de passe des comptes de test
-
-Tous les comptes seed partagent le même mot de passe de test (ex. `Test@2026`).
-
-Générer le hash :
-
-```powershell
-cd c:\xampp\htdocs\Ogefrem
-php DataBase\tools\generate_password_hash.php "Test@2026"
-```
-
-Copier la sortie (chaîne commençant par `$2y$...`) et la coller dans `DataBase/seeds/002_seed_roles_users.sql` à la place de :
-
-```sql
-SET @test_hash = '$2y$10$replace_me_with_php_hash';
-```
-
-### Étape C — Importer les données de test
-
-Dans phpMyAdmin, importer :
-
-- `DataBase/seeds/002_seed_roles_users.sql`
-
-### Comptes de test (après seed) — organigramme DANTIC
-
-Mot de passe (test) : `Test@2026` (si hash configuré dans le seed).
-
-| Matricule | Profil |
-|-----------|--------|
-| `DIR-001` | Directrice DANTIC |
-| `SDM-001` | Sous-directeur IRT (Infrastructures, Réseaux et Télécoms) |
-| `SDA-001` | Sous-directeur A&D (Analyse et Développement des Applications) |
-| `CS-IRT-INF-001` | Chef — Service Infrastructure |
-| `CSM-001` | Chef — Service Réseaux et Sécurité Informatique |
-| `CS-IRT-TEL-001` | Chef — Service Télécoms et Bureautique |
-| `CSA-001` | Chef — Service Développement et Suivi des Applications |
-| `CS-AD-ACM-001` | Chef — Service Analyse, Conception et Maintenance |
-| `CS-AD-LIA-001` | Chef — Service Liaison Partenaires |
-| `AG-IRT-INF-001` | Agent — B. Maintenance Informatique |
-| `TCM-001` | Agent — B. Réseaux et Help-Desk |
-| `AG-IRT-TEL-001` | Agent — B. Télécom et Internet |
-| `TCA-001` | Agent — B. Dev des Applications Techniques |
-| `AG-AD-ACM-001` | Agent — B. Analyse |
-| `AG-AD-LIA-001` | Agent — B. Liaisons Données Partenaires |
-| `ADMIN-001` | Super administrateur |
-
-Importer aussi les migrations :
-- `DataBase/migrations/20260602_director_reports_refactor.sql`
-- `DataBase/migrations/20260604_align_dantic_organigram.sql` (bases déjà existantes)
-
-### Connexion API (optionnel)
-
-Par défaut, l’API utilise :
-
-- Hôte : `127.0.0.1`
-- Base : `ogefrem_ops_hub`
-- Utilisateur : `root`
-- Mot de passe : *(vide sous XAMPP)*
-
-Pour changer, définir les variables d’environnement système ou Apache : `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` (voir `api/config/database.php`).
-
-## 3. Démarrer l’application
-
-L’app repose sur **deux services** en développement local :
-
-| Service | Rôle | URL |
-|---------|------|-----|
-| **XAMPP** (Apache + MySQL) | API PHP + base de données | http://localhost/Ogefrem/api |
-| **Vite** (`npm run dev`) | Interface React | http://localhost:5173/ |
-
-### Démarrage rapide (checklist)
-
-1. **XAMPP** — Démarrer **Apache** et **MySQL** dans le panneau de contrôle.
-2. **Base** — Schéma + seed importés dans phpMyAdmin (section 2), si ce n’est pas déjà fait.
-3. **API** — Vérifier que l’endpoint health répond (étape B ci-dessous).
-4. **Frontend** — `Copy-Item .env.example .env`, puis `npm install` (section 1), puis `npm run dev` (étape C).
-5. **Navigateur** — Ouvrir http://localhost:5173/
-
-### A. Apache + MySQL (XAMPP)
-
-1. Lancer le **XAMPP Control Panel**
-2. Démarrer **Apache** et **MySQL**
-
-Sans Apache, l’API et le login DANTIC ne fonctionnent pas. Sans MySQL, les tickets et comptes ne sont pas accessibles.
-
-### B. Vérifier l’API
-
-**Navigateur** : http://localhost/Ogefrem/api/health  
-
-Réponse attendue : `{"ok":true,"service":"OGEFREM Ops Hub API"}`
-
-**PowerShell** (contrôle en ligne de commande) :
-
-```powershell
-Invoke-WebRequest -Uri "http://localhost/Ogefrem/api/health" -UseBasicParsing
-```
-
-Si vous obtenez une 404, vérifier que `mod_rewrite` est activé dans Apache et que `api/.htaccess` est présent.
-
-### C. Lancer le frontend (développement)
-
-Dans un **terminal PowerShell dédié** (laisser la fenêtre ouverte tant que vous développez) :
-
-```powershell
-cd c:\xampp\htdocs\Ogefrem\frontend
 npm run dev
 ```
 
-Quand Vite est prêt, la console affiche par exemple :
+| URL | Rôle |
+|-----|------|
+| http://localhost:5173/ | Portail public |
+| http://localhost:5173/app/agent | Agents / chefs de bureau |
+| http://localhost:5173/app/sous-direction | Chefs de service / sous-directeurs |
+| http://localhost:5173/app/directeur | Directrice |
+| http://localhost:5173/app/admin | Super admin |
+| http://localhost/Ogefrem/api/health | Health check API |
 
-```text
-  ➜  Local:   http://localhost:5173/
-```
+`.env` : `VITE_API_URL=http://localhost/Ogefrem/api`
 
-Ouvrir : **http://localhost:5173/**
+---
 
-> Le frontend en dev appelle l’API sur `http://localhost/Ogefrem/api` (cookies de session inclus).  
-> **Important** : ne fermez pas le terminal où tourne `npm run dev` — l’arrêt du processus coupe l’interface React (le message « ready » disparaît et le port 5173 n’est plus servi).
+## Workflow tickets (règles métier)
 
-Pour arrêter le frontend : `Ctrl+C` dans ce terminal.
+### Entrée
 
-### D. Build production (optionnel)
+1. Tout agent OGEFREM dépose un ticket via le **portail public** (catégorie **obligatoire**).
+2. Routage automatique → **TOUS LES TICKETS** (visible par **tous** les chefs de service DANTIC).
+3. Un chef **prend** le ticket : **priorité obligatoire**, SLA optionnel → ticket en **file du service**.
+4. Agent ou chef de bureau **prend la main** (priorité déjà fixée par le chef).
+
+### Prise en charge et clôture
+
+- **Prendre en charge** → statut `en_cours`, zone rapport visible.
+- Boutons **Résolu** / **Non résolu** → clôture + soumission du rapport (un seul rapport de validation par ticket, contenu libre).
+- **Non résolu** : le rapport décrit contraintes, dépendances, éléments bloquants (visible en validation et futur onglet SD/Directrice).
+
+### Priorité / SLA (scénarios)
+
+| Situation | Règle |
+|-----------|--------|
+| Claim chef (TOUS LES TICKETS) | Priorité obligatoire, SLA optionnel |
+| Assignation agent | Priorité/SLA modifiables |
+| Ticket assigné, pas encore `en_cours` | Chef peut modifier priorité/SLA et réaffecter |
+| Ticket `en_cours` | Chef ne modifie plus priorité/SLA |
+| File du service | Priorité déjà fixée au claim chef |
+| Réouverture `non_resolu` | Priorité conservée, SLA remis à zéro ; croix → retour file avec même priorité |
+
+### Tickets clôturés ↔ Historique (agent)
+
+| Étape | Vue agent |
+|-------|-----------|
+| Clôture (résolu ou non résolu) | **Tickets clôturés** |
+| Chef valide le rapport | **Historique** (co-intervenants inclus) |
+| Rejet SD sur ticket **résolu** | Reste en **historique** jusqu’au rejet chef vers l’agent |
+| Rejet SD sur ticket **non_resolu** | **Tickets clôturés** → réouverture directe |
+| Rejet chef (résolu) | **Tickets clôturés** → correction rapport |
+| Rejet directrice | Passe d’abord par la **sous-direction** |
+
+Pas de date limite de correction. Pas d’archivage auto au 1er du mois côté tickets.
+
+Date de référence dans l’**historique agent** : **date de clôture**.
+
+### Validation des rapports
+
+Chaîne : **Chef de service** → **Sous-directeur** → **Directrice** → archive `rapports_valides`.
+
+Réouverture d’un ticket : **nouveau rapport**, nouvelle chaîne complète.
+
+### Co-intervention
+
+- Lecture + notifications pour le co-intervenant.
+- Invitation **expirée après 2 minutes** si non acceptée (suppression auto).
+- Transfert ou remise en file : co-interventions **supprimées**.
+- Un agent ne peut pas être assigné principal **et** co-intervenant sur le même ticket (sauf transfert chef de bureau vers un co-intervenant → il devient assigné).
+- Seul l’agent **en charge** (ou chef de bureau en charge) peut inviter.
+
+### Chef de bureau
+
+Comme un technicien + **transfert** d’un ticket pris en charge vers un autre agent.
+
+### Rôles pilotage
+
+| Rôle | Tickets | Rapports ticket | Rapports mensuels |
+|------|---------|-----------------|-------------------|
+| Directrice | Consultation | Validation / rejet | Validation, commentaire, archivage |
+| Sous-directeur | SD uniquement, consultation | Validation / rejet | Commentaire (pas de rejet PDF) |
+| Chef de service | Opérationnel | Validation / rejet | Consultation bundles + commentaire |
+
+---
+
+## Rapports périodiques
+
+### Hebdomadaires
+
+- Rédaction par semaine ; pas de rappel vendredi obligatoire si aucun ticket traité.
+- Notifications / animations si aucune résolution sur la période (à enrichir).
+
+### Mensuels individuels (agents)
+
+- Chaque agent envoie la concaténation de ses hebdos à un **collègue choisi librement** (pas de désignation système).
+- Recommandé que le destinataire reçoive tous les envois ; le système peut signaler les manquants (à implémenter).
+
+### Rapport mensuel PDF (sous-direction)
+
+- Un **seul PDF officiel** par sous-direction et par mois.
+- Upload par **agents et chefs de bureau** uniquement.
+- Destinataire principal : **directrice** ; envoi optionnel au SD/chef pour commentaires.
+- SD : commentaire seulement. Directrice : valide (archive) ou rejette → **agent rapporteur**.
+
+### Bundles mensuels (chef de service)
+
+- Consultation + **commentaire** (pas de validation bloquante).
+
+---
+
+## Sécurité et accès (décisions 44–45)
+
+### 44 — Qui lit `GET /tickets/{id}/reports` ?
+
+| Acteur | Condition |
+|--------|-----------|
+| Agent assigné ou co-intervenant accepté | Ticket concerné |
+| Chef de service | Ticket de son périmètre (`assigned_chef_id`) |
+| Sous-directeur | Ticket de sa sous-direction |
+| Directrice / super admin | Rapport en circuit de validation ou archivé |
+| Autres | **Refus** |
+
+*(À renforcer côté API — aujourd’hui trop permissif.)*
+
+### 45 — Trois « archives » (distinctes)
+
+| Concept | Technique | Visible pour |
+|---------|-----------|--------------|
+| **Historique agent** | `agent_resolved_archives` | Agent / co-intervenant après validation chef |
+| **Archive rapport validé** | `rapports_valides` | Directrice (+ historique SD des tickets validés par la directrice) |
+| **Archive système ticket** | `tickets.status = archive` | Admin (tickets résolus > 30 j) |
+
+Ne pas fusionner en une seule notion UI : libellés différents selon le rôle.
+
+---
+
+## Statuts ticket (cible)
+
+`chez_chef_service` → `assigne_technicien` → `en_cours` → `resolu` | `non_resolu` → `archive`
+
+Statuts **retirés** du flux : `nouveau`, `chez_sous_direction`.
+
+Priorités : `urgent`, `elevee`, `normale`.
+
+---
+
+## Données de démonstration (`seed_demo.sql`)
+
+Second seed **idempotent** (à lancer après `seed.sql`). Tous les tickets démo sont préfixés `TKT-2026-9xxx`.
 
 ```powershell
-cd c:\xampp\htdocs\Ogefrem\frontend
-npm run build
+mysql -u root ogefrem_ops_hub < DataBase\seed_demo.sql
 ```
 
-Les fichiers statiques sont dans `frontend/dist/`.  
-Vous pouvez les servir via Apache (virtual host ou sous-dossier) ou continuer à utiliser `npm run dev` en local.
+| Contenu | Détail |
+|---------|--------|
+| **20 tickets** | Tous les statuts : pool chef, assigné, en cours, résolu, non résolu, archive |
+| **11 rapports** | soumis, rejeté (chef/SD/directrice), validé chef/SD/directrice, brouillon |
+| **Co-interventions** | pending (9005) et accepted (9006, 9019) |
+| **Contraintes** | Ticket `9014` avec consignes SD + directrice |
+| **Historique agent** | Tickets `9018` / `9019` dans `agent_resolved_archives` |
+| **Archives directrice** | `rapports_valides` pour `9011` et `9016` |
+| **Périodiques** | 6 rapports hebdo, 3 bundles mensuels + commentaires chef, 3 PDF SD |
+| **Notifications** | 9 notifications `[DEMO]` cliquables |
 
-## 4. Utiliser l’application
+### Parcours rapides par rôle
 
-### Portail public
+| Matricule | À tester |
+|-----------|----------|
+| `CS-AD-ACM-001` | Valider rapport `9007` (soumis) |
+| `CS-IRT-TEL-001` | Rapport `9009` en attente SD |
+| `SDM-001` | Valider chaîne IRT ; bundles / PDF mensuels IRT |
+| `SDA-001` | Valider `9010` ; onglet Contraintes (`9014`) |
+| `DIR-001` | Valider `9010` ; archives rapports ; rejet `9013` |
+| `AG-AD-DEV-FIN` | En cours `9005` + invitation co-intervention |
+| `AG-AD-ACM-ANA` | Co-intervention acceptée `9006` ; historique `9018` |
+| `AG-IRT-RES-HD` | Historique + co-intervention `9019` |
+| `CB-IRT-TEL-001` | Ticket assigné `9003` |
+| Portail public | Suivi avec token du ticket `9001` |
 
-- URL (dev) : http://localhost:5173/  
-- Soumettre un ticket : formulaire gauche (nom, matricule, direction, service, bureau, catégorie, description).  
-- **Pas de suivi** après soumission en V1.
+PDF démo : `api/storage/monthly_reports/demo_*_2026_*.pdf`
 
-### Connexion DANTIC
+---
 
-- Formulaire droit sur la page d’accueil : matricule + mot de passe.  
-- Redirection automatique selon le rôle :
-  - `/app/directeur` — Responsable DANTIC
-  - `/app/sous-direction` — Sous-directeur ou chef de service
-  - `/app/agent` — Agent (technicien terrain)
-  - `/app/admin` — Super admin
+## Comptes de test
 
-### Simulateur de rôles (développement)
+| Matricule | Profil |
+|-----------|--------|
+| `DIR-001` | Directrice |
+| `SDM-001` / `SDA-001` | Sous-directeurs IRT / A&D |
+| `CS-*` | Chefs de service |
+| `AG-*` / `CB-*` | Agents / chefs de bureau |
+| `ADMIN-001` | Super admin |
 
-Si `VITE_DEV_ROLE_SIMULATOR=true`, un menu en haut permet de prévisualiser les écrans sans changer de compte.
+---
 
-### Maquettes HTML (référence uniquement)
+## Fonctionnalités récentes
 
-- http://localhost/Ogefrem/legacy/login.html  
-- http://localhost/Ogefrem/legacy/directeur.html  
-- http://localhost/Ogefrem/legacy/sous-direction.html  
-- http://localhost/Ogefrem/legacy/agent.html  
+- Onglet **Contraintes** (SD + Directrice) : tickets `non_resolu`, rapport de clôture, consignes par ticket.
+- Notifications staff **cliquables** → onglet/ticket concerné.
+- **Alertes mensuelles** (chef : bundles agents manquants ; directrice : PDF SD manquants).
+- Commentaires **chef de service** sur les bundles mensuels reçus.
+- Historique agent paginé côté serveur (25/page).
+- Réouverture `non_resolu` : SLA remis à zéro, anciens rapports invalidés, nouvelle chaîne à la reclôture.
+- Soumission publique : ticket créé directement en `chez_chef_service` (plus de statut `nouveau` intermédiaire).
+- Doublons publics : exemptés pour la catégorie **Autres** (similarité « Autre » : à venir).
 
-Voir aussi : http://localhost/Ogefrem/index.html (liens rapides).
+## Fonctionnalités à venir
 
-## 5. Migrations SQL ultérieures
+- Détection doublons catégorie **Autre** (similarité description).
+- Filtres historique avancés côté serveur (recherche, groupement année/mois).
 
-Ne pas modifier `DataBase/schema/001_initial_schema.sql` après mise en production.
+---
 
-Ajouter chaque changement dans :
+## Hors périmètre
 
-```text
-DataBase/migrations/YYYYMMDD_description.sql
-```
+- Module **parc informatique** (retiré de ce projet).
+- Endpoints legacy supprimés : `assign-sub-directorate`, `escalate`, `forward-to-chef`.
+- Fenêtre 48 h directrice (`director_visible_until`) : **supprimée**.
 
-Convention détaillée : `DataBase/migrations/README.md`.
+---
 
-### Migrations récentes
+## Dépannage
 
-- `DataBase/migrations/20260602_director_reports_refactor.sql` — rapports ticket, `rapports_valides`, visibilité directrice 48h.
-- `DataBase/migrations/20260606_periodic_reports.sql` — rapports hebdomadaires, bundles mensuels agents, rapports mensuels SD, archives agent.
-
-Install neuve : tout est inclus dans `001_schema_complet.sql`.
-
-## 6. Workflow directrice (résumé)
-
-Interface par **onglets** :
-
-1. **Tickets reçus** — priorité, échéance et sous-direction validées en une action.
-2. **Tickets en cours** — suivi des affectations ; bouton **Voir rapport** si le sous-directeur a remonté un rapport ticket.
-3. **Rapports ticket** — validation ou rejet par la directrice.
-4. **Rapports mensuels** — lecture, téléchargement, commentaire ; **Conserver** (archive) ou **Supprimer** (suppression logique). Filtres sous-direction et mois.
-5. **Archives** — rapports mensuels archivés + rapports ticket validés (`rapports_valides`).
-
-Les tickets disparaissent de la vue directrice après **48 h** (`DIRECTOR_VISIBILITY_HOURS`) ; les rapports ticket validés restent archivés.
-
-Tri par défaut des tickets : **Bloquant → Haute → Normale**, puis date d'émission.
-
-## 7. Workflow des rapports (toute la hiérarchie)
-
-| Niveau | Valider → | Rejeter → (commentaire obligatoire) |
-|--------|-----------|-------------------------------------|
-| Chef de service | Sous-directeur | Agent |
-| Sous-directeur | Directrice | Chef de service |
-| Directrice | Archive `rapports_valides` | Sous-directeur |
-
-- Le ticket reste **résolu** ; l’agent soumet une **nouvelle version** du rapport après correction.
-- Interface **chef** : 3 volets (tickets reçus / affectés / validation rapports), agents filtrés par **même service** DANTIC.
-
-### Tests manuels rapides (`Test@2026`)
-
-1. `DIR-001` → affecte à `SDM-001` → `SDM-001` transmet à `CS-IRT-INF-001` → chef assigne `AG-IRT-INF-001`.
-2. Agent résout + rapport → chef valide → SD valide → directrice valide (archive).
-3. Rejet chef → agent corrige (nouvelle version) → remontée.
-4. Rejet SD → chef → agent → remontée.
-5. Rejet directrice → SD → chef → agent si besoin.
-6. Chef `CS-IRT-INF-001` : la liste d’agents ne doit **pas** contenir `TCM-001` (autre service).
-
-## 8. Branding, verrous, agent et cycle mensuel
-
-- **En-tête** : logo `ogefrem_LOGO.png` + libellé **OGEFREM Tickets** (portail public et espaces connectés).
-- **Portail public** : cloche (tickets soumis en `sessionStorage`), icône connexion → modal DANTIC (logo + champs Identifiant / Mot de passe).
-- **Verrous « Modifier »** : chef uniquement si `assigne_technicien` ; sous-directeur / directrice uniquement si `chez_sous_direction`. API : `assign`, `forward-to-chef`, `assign-sub-directorate` renvoient 422 si verrou actif.
-- **Agent** : 3 volets (affectés / résolus par semaine lun–ven / historique) ; rapports hebdomadaires (rappel vendredi) ; envoi fin de mois au collègue rédacteur ; archivage auto le 1er du mois si bundle envoyé.
-- **Rédacteur mensuel** : inbox des bundles agents, upload PDF/Word vers la directrice (2 rapports max par mois : IRT + A&D).
-- **Filtres v1** : priorité/date (tickets) ; semaine + priorité (agent résolus) ; service + statut (SD) ; statut (chef) ; sous-direction + mois (rapports mensuels directrice).
-
-## Dépannage rapide
-
-| Problème | Piste de solution |
-|----------|-------------------|
-| Erreur connexion base | MySQL démarré ? Base `ogefrem_ops_hub` importée ? |
-| Login échoue | Hash `@test_hash` bien remplacé dans le seed ? Seed réimporté après modification ? |
-| API 404 ou inaccessible | Apache démarré dans XAMPP ? Tester http://localhost/Ogefrem/api/health |
-| Page http://localhost:5173/ inaccessible | Relancer `npm run dev` dans `frontend/` (terminal ouvert) |
-| Frontend n’appelle pas l’API | Fichier `frontend/.env` présent ? `VITE_API_URL=http://localhost/Ogefrem/api` puis redémarrer Vite |
-| CORS / session | Utiliser `npm run dev` ; l’API autorise les credentials depuis l’origine du navigateur |
-| `&&` invalide en PowerShell | Utiliser `;` entre les commandes, ou une commande par ligne |
-
-## Documentation complémentaire
-
-- Guide collègues (PDF via impression) : [docs/GUIDE_OGEFREM.md](docs/GUIDE_OGEFREM.md)
-
-- API : [api/README.md](api/README.md)  
-- Frontend : [frontend/README.md](frontend/README.md)  
-- Base de données : [DataBase/README.md](DataBase/README.md)  
-- Maquettes : [legacy/README.md](legacy/README.md)  
-- Design : [stark_precision/DESIGN.md](stark_precision/DESIGN.md)
+| Problème | Action |
+|----------|--------|
+| API 404 | Apache actif, `api/.htaccess` présent |
+| Login échoue | `seed.sql` importé, mot de passe `Test@2026` |
+| Colonnes manquantes | `mysql -u root ogefrem_ops_hub < DataBase\migrations_up.sql` |
+| Pas de tickets démo | `mysql -u root ogefrem_ops_hub < DataBase\seed_demo.sql` |

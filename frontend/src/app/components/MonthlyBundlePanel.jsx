@@ -1,21 +1,22 @@
 import { useEffect, useState } from 'react'
 import { apiRequest } from '../api'
+import { formatServiceLabel } from '../uiHelpers'
 import { getCurrentYearMonth } from '../utils/calendarWeeks'
 
 export function MonthlyBundlePanel({ onNotice }) {
   const { year, monthIndex } = getCurrentYearMonth()
   const month = monthIndex + 1
-  const [agents, setAgents] = useState([])
+  const [recipients, setRecipients] = useState([])
   const [recipientId, setRecipientId] = useState('')
   const [body, setBody] = useState('')
   const [sent, setSent] = useState(false)
 
   async function load() {
-    const [agentsData, preview] = await Promise.all([
-      apiRequest('/meta/agents-sub-directorate'),
+    const [recipientsData, preview] = await Promise.all([
+      apiRequest('/meta/monthly-bundle-recipients'),
       apiRequest(`/periodic/monthly-bundle/preview?year=${year}&month=${month}`),
     ])
-    setAgents(agentsData.agents || [])
+    setRecipients(recipientsData.recipients || [])
     setBody(preview.preview?.body || '')
     setSent(Boolean(preview.preview?.sent))
   }
@@ -26,7 +27,7 @@ export function MonthlyBundlePanel({ onNotice }) {
 
   async function sendBundle() {
     if (!recipientId) {
-      onNotice?.('Choisissez un collègue de votre sous-direction.')
+      onNotice?.('Choisissez un destinataire (agent ou chef de service).')
       return
     }
     await apiRequest('/periodic/monthly-bundle', {
@@ -49,22 +50,23 @@ export function MonthlyBundlePanel({ onNotice }) {
         Un seul envoi regroupant toutes vos semaines ({month}/{year}). {sent ? 'Déjà envoyé ce mois.' : ''}
       </p>
       <label className="block text-xs font-semibold uppercase text-on-surface-variant">
-        Collègue rédacteur (même sous-direction)
+        Destinataire (agent ou chef de service)
         <select
           className="mt-1 w-full rounded border border-outline-variant p-2 text-sm"
           value={recipientId}
           onChange={(e) => setRecipientId(e.target.value)}
         >
           <option value="">— Choisir —</option>
-          {agents.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.prenom} {a.nom} ({a.matricule}) — {a.service_label}
+          {recipients.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.recipient_kind === 'chef_service' ? 'Chef de service — ' : ''}
+              {r.prenom} {r.nom} ({r.matricule}) — {formatServiceLabel(r.service_label)}
             </option>
           ))}
         </select>
       </label>
       <textarea
-        className="w-full rounded border border-outline-variant p-2 text-sm font-mono"
+        className="w-full rounded border border-outline-variant bg-surface-lowest p-2 text-sm font-mono text-on-surface"
         rows={10}
         value={body}
         onChange={(e) => setBody(e.target.value)}

@@ -48,6 +48,13 @@ export function getCurrentYearMonth() {
   return { year: now.getFullYear(), monthIndex: now.getMonth() }
 }
 
+export function getDefaultReportMonth() {
+  const d = new Date()
+  d.setDate(1)
+  d.setMonth(d.getMonth() - 1)
+  return { year: d.getFullYear(), month: d.getMonth() + 1 }
+}
+
 export function parseClosedDate(ticket) {
   const raw = ticket.closed_at || ticket.created_at
   if (!raw) return null

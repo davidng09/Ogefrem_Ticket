@@ -7,7 +7,7 @@ if ($method === 'GET' && $path === '/meta/users') {
     $sessionUser = requireAuth();
 
     $sql = <<<SQL
-SELECT u.id, u.nom, u.prenom, u.sub_directorate_id, u.service_id, u.service_label, r.code AS role_code
+SELECT u.id, u.nom, u.prenom, u.sub_directorate_id, u.service_id, u.service_label, u.last_seen_at, r.code AS role_code
 FROM users u
 JOIN roles r ON r.id = u.role_id
 WHERE u.is_active = 1
@@ -38,7 +38,15 @@ SQL;
     $sql .= ' ORDER BY u.nom ASC';
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
-    jsonResponse(['ok' => true, 'users' => $stmt->fetchAll()]);
+    $rows = $stmt->fetchAll();
+    if (!empty($_GET['include_online'])) {
+        require_once __DIR__ . '/../services/PresenceService.php';
+        foreach ($rows as &$row) {
+            $row['online'] = isUserOnline($row['last_seen_at'] ?? null);
+        }
+        unset($row);
+    }
+    jsonResponse(['ok' => true, 'users' => $rows]);
 }
 
 if ($method === 'GET' && $path === '/meta/sub-directorates') {

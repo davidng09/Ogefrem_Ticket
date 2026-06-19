@@ -1,14 +1,16 @@
+import { createPortal } from 'react-dom'
+
 export function Modal({ open, onClose, title, children, wide = false, hideHeader = false }) {
   if (!open) return null
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
       onClick={onClose}
       role="presentation"
     >
       <div
-        className={`max-h-[90vh] overflow-y-auto rounded border border-outline-variant bg-surface-lowest shadow-lg ${wide ? 'w-full max-w-2xl' : 'w-full max-w-md'}`}
+        className={`workspace-glass-modal max-h-[90vh] overflow-y-auto rounded border border-outline-variant shadow-lg ${wide ? 'w-full max-w-2xl' : 'w-full max-w-md'}`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -33,6 +35,7 @@ export function Modal({ open, onClose, title, children, wide = false, hideHeader
         )}
         <div className={hideHeader ? 'px-4 pb-4' : 'p-4'}>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

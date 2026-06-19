@@ -1,14 +1,19 @@
-import { Bell, LogOut } from 'lucide-react'
+import { Bell } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
+import { AccountMenu } from './components/AccountMenu'
 import { AppBrand } from './components/AppBrand'
-import { ThemeToggle } from './components/ThemeToggle'
+import { PeriodicAlertsBanner } from './components/PeriodicAlertsBanner'
+import { WorkspaceBackground } from './components/WorkspaceBackground'
 import { getHomeRouteByRole, useAuth } from './AuthContext'
 import { apiRequest } from './api'
 import { useClickOutside } from './hooks/useClickOutside'
 import { getRoleLabel } from './uiHelpers'
+import { getNotificationNavigation } from './workspaceNavigation'
 
 function NotificationsDropdown() {
+  const navigate = useNavigate()
+  const { user } = useAuth()
   const [items, setItems] = useState([])
   const [open, setOpen] = useState(false)
   const panelRef = useRef(null)
@@ -24,18 +29,21 @@ function NotificationsDropdown() {
 
   const unreadCount = items.filter((n) => Number(n.is_read) === 0).length
 
-  async function markRead(id) {
-    await apiRequest(`/notifications/${id}/read`, { method: 'PATCH' })
+  async function handleClick(item) {
+    await apiRequest(`/notifications/${item.id}/read`, { method: 'PATCH' })
     setItems((current) =>
-      current.map((item) =>
-        item.id === id
+      current.map((entry) =>
+        entry.id === item.id
           ? {
-              ...item,
+              ...entry,
               is_read: 1,
             }
-          : item,
+          : entry,
       ),
     )
+    const { path, search } = getNotificationNavigation(item, user?.role_code)
+    close()
+    navigate(`${path}${search}`)
   }
 
   return (
@@ -43,7 +51,7 @@ function NotificationsDropdown() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="relative rounded border border-outline-variant bg-surface-low p-2"
+        className="relative rounded border border-outline-variant bg-surface-low/80 p-2 backdrop-blur-sm"
         aria-label="Notifications"
         aria-expanded={open}
       >
@@ -55,7 +63,7 @@ function NotificationsDropdown() {
         )}
       </button>
       {open && (
-        <div className="absolute right-0 z-20 mt-2 max-h-72 w-80 overflow-y-auto rounded border border-outline-variant bg-surface-lowest p-2 shadow-lg">
+        <div className="absolute right-0 z-20 mt-2 max-h-72 w-80 overflow-y-auto rounded border border-outline-variant bg-surface-lowest/90 p-2 shadow-lg backdrop-blur-xl">
           {items.length === 0 ? (
             <p className="p-2 text-xs text-on-surface-variant">Aucune notification</p>
           ) : (
@@ -63,8 +71,10 @@ function NotificationsDropdown() {
               <button
                 key={item.id}
                 type="button"
-                onClick={() => markRead(item.id)}
-                className="mb-1 w-full rounded border border-outline-variant p-2 text-left hover:bg-surface-low"
+                onClick={() => handleClick(item)}
+                className={`mb-1 w-full rounded border p-2 text-left hover:bg-surface-low ${
+                  Number(item.is_read) === 0 ? 'border-primary/40 bg-surface-low/60' : 'border-outline-variant'
+                }`}
               >
                 <p className="text-xs font-semibold">{item.title}</p>
                 <p className="text-xs text-on-surface-variant">{item.message}</p>
@@ -88,28 +98,23 @@ export function WorkspaceLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-surface">
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-outline-variant bg-surface-lowest px-4 py-3">
+    <div className="workspace-app min-h-screen">
+      <WorkspaceBackground />
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-outline-variant bg-surface-lowest/80 px-4 py-3 backdrop-blur-xl">
         <div className="flex items-center gap-3">
           <AppBrand linkTo={getHomeRouteByRole(user?.role_code)} />
-          <span className="rounded bg-surface-low px-2 py-1 text-xs">{getRoleLabel(user?.role_code)}</span>
-          <span className="rounded border border-outline-variant bg-surface-lowest px-2 py-1 text-xs text-on-surface-variant">
+          <span className="rounded bg-surface-low/70 px-2 py-1 text-xs backdrop-blur-sm">{getRoleLabel(user?.role_code)}</span>
+          <span className="rounded border border-outline-variant/70 bg-surface-lowest/60 px-2 py-1 text-xs text-on-surface-variant backdrop-blur-sm">
             {displayName || 'Utilisateur connecte'}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <ThemeToggle />
           <NotificationsDropdown />
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="inline-flex items-center gap-1 rounded border border-outline-variant bg-surface-low px-2 py-1 text-xs"
-          >
-            <LogOut size={14} /> Déconnexion
-          </button>
+          <AccountMenu user={user} onLogout={handleLogout} />
         </div>
       </header>
-      <main className="mx-auto max-w-7xl p-4">
+      <main className="relative z-[1] mx-auto max-w-7xl p-4">
+        <PeriodicAlertsBanner />
         <Outlet />
       </main>
     </div>

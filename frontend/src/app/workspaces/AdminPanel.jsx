@@ -3,7 +3,9 @@ import { DateFilterHeader, PriorityFilterHeader } from '../components/TicketTabl
 import { ScrollablePanel } from '../components/ScrollablePanel'
 import { apiRequest } from '../api'
 import { useTicketFilters } from '../hooks/useTicketFilters'
-import { useTickets } from '../hooks/useTickets'
+import { usePaginatedTickets } from '../hooks/useTickets'
+import { PaginationBar } from '../components/PaginationBar'
+import { TicketDetailLink } from '../components/TicketDetailLink'
 import {
   formatEmittedDate,
   formatStatusLabel,
@@ -11,7 +13,6 @@ import {
   getRoleLabel,
   getStatusBadgeClass,
   subDirectorates,
-  truncateText,
 } from '../uiHelpers'
 
 const initialForm = {
@@ -31,7 +32,7 @@ export function AdminPanel() {
   const [services, setServices] = useState([])
   const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
-  const { tickets, loading: ticketsLoading } = useTickets()
+  const { tickets, loading: ticketsLoading, pagination, setPage } = usePaginatedTickets(null, null, 15)
   const { priorityFilter, setPriorityFilter, dateFilter, setDateFilter, filteredTickets } =
     useTicketFilters(tickets)
 
@@ -129,12 +130,12 @@ export function AdminPanel() {
                     <tr key={ticket.id} className="border-t border-outline-variant">
                       <td className="p-2">
                         <p className="font-semibold">{ticket.ticket_number}</p>
-                        <p className="text-xs text-on-surface-variant">{truncateText(ticket.description, 50)}</p>
+                        <TicketDetailLink ticket={ticket} className="text-xs" />
                       </td>
                       <td className="p-2">{ticket.category_label}</td>
                       <td className="p-2 text-xs">{formatEmittedDate(ticket.created_at)}</td>
                       <td className="p-2">
-                        <span className={`rounded px-2 py-1 text-xs ${getStatusBadgeClass(ticket.status)}`}>
+                        <span className={`rounded px-2 py-1 text-xs ${getStatusBadgeClass(ticket.status, ticket)}`}>
                           {formatStatusLabel(ticket.status, ticket)}
                         </span>
                       </td>
@@ -150,6 +151,7 @@ export function AdminPanel() {
             </table>
           </ScrollablePanel>
         )}
+        <PaginationBar pagination={pagination} onPageChange={setPage} itemLabel="tickets" />
       </section>
 
       <section className="rounded border border-outline-variant bg-surface-lowest p-4 shadow-sm">
@@ -161,6 +163,7 @@ export function AdminPanel() {
             <option value="DIRECTEUR">Directrice DANTIC</option>
             <option value="SOUS_DIRECTEUR">Sous-directeur DANTIC</option>
             <option value="CHEF_SERVICE">Chef de service DANTIC</option>
+            <option value="CHEF_BUREAU">Chef de bureau DANTIC</option>
             <option value="TECHNICIEN">Agent DANTIC</option>
             <option value="SUPER_ADMIN">Super admin</option>
           </select>

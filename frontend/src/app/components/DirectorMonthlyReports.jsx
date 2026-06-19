@@ -1,48 +1,70 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiRequest, downloadFile } from '../api'
 import { formatEmittedDate, subDirectorates } from '../uiHelpers'
-import { MonthFilterHeader, SubDirectorateFilterHeader } from './TicketTableFilters'
+import { PaginationBar } from './PaginationBar'
 import { ScrollablePanel } from './ScrollablePanel'
+
+const MONTH_NAMES = [
+  'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+]
 
 export function DirectorMonthlyReports({ onNotice, archived = false }) {
   const [reports, setReports] = useState([])
+  const [groupedByYear, setGroupedByYear] = useState({})
+  const [pagination, setPagination] = useState(null)
+  const [availableYears, setAvailableYears] = useState([])
   const [selected, setSelected] = useState(null)
   const [comment, setComment] = useState('')
-  const [sdFilter, setSdFilter] = useState('all')
-  const [monthFilter, setMonthFilter] = useState('all')
+  const [yearFilter, setYearFilter] = useState('')
+  const [monthFilter, setMonthFilter] = useState('')
+  const [sdFilter, setSdFilter] = useState('')
+  const [page, setPage] = useState(1)
   const [downloading, setDownloading] = useState(false)
+  const [loading, setLoading] = useState(true)
 
-  async function load() {
-    const visibility = archived ? 'archived' : 'active'
-    const data = await apiRequest(`/periodic/monthly-reports?visibility=${visibility}`)
-    setReports(data.reports || [])
-  }
+  const visibility = archived ? 'archived' : 'active'
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({
+        visibility,
+        page: String(page),
+        per_page: '12',
+      })
+      if (yearFilter) params.set('year', yearFilter)
+      if (monthFilter) params.set('month', monthFilter)
+      if (sdFilter) params.set('sub_directorate_id', sdFilter)
+      const data = await apiRequest(`/periodic/monthly-reports?${params}`)
+      setReports(data.reports || [])
+      setGroupedByYear(data.grouped_by_year || {})
+      setPagination(data.pagination || null)
+      if (data.available_years?.length) {
+        setAvailableYears(data.available_years)
+      }
+    } catch {
+      setReports([])
+      setGroupedByYear({})
+      setPagination(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [visibility, page, yearFilter, monthFilter, sdFilter])
 
   useEffect(() => {
-    load().catch(() => {})
-  }, [archived])
+    load()
+  }, [load])
 
-  const monthPeriods = useMemo(() => {
-    const map = new Map()
-    reports.forEach((r) => {
-      const value = `${r.year}-${String(r.month).padStart(2, '0')}`
-      if (!map.has(value)) {
-        map.set(value, { value, label: `${r.month}/${r.year}` })
-      }
-    })
-    return [...map.values()].sort((a, b) => b.value.localeCompare(a.value))
-  }, [reports])
-
-  const filteredReports = useMemo(() => {
-    return reports.filter((r) => {
-      if (sdFilter !== 'all' && String(r.sub_directorate_id) !== sdFilter) return false
-      if (monthFilter !== 'all') {
-        const key = `${r.year}-${String(r.month).padStart(2, '0')}`
-        if (key !== monthFilter) return false
-      }
-      return true
-    })
-  }, [reports, sdFilter, monthFilter])
+  const yearSections = useMemo(() => {
+    const years = Object.keys(groupedByYear)
+      .map(Number)
+      .sort((a, b) => b - a)
+    return years.map((y) => ({
+      year: y,
+      items: groupedByYear[y] || [],
+    }))
+  }, [groupedByYear])
 
   async function saveComment() {
     if (!selected || !comment.trim()) return
@@ -55,12 +77,12 @@ export function DirectorMonthlyReports({ onNotice, archived = false }) {
     load()
   }
 
-  async function setVisibility(id, visibility) {
+  async function setVisibility(id, nextVisibility) {
     await apiRequest(`/periodic/monthly-reports/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ visibility }),
+      body: JSON.stringify({ visibility: nextVisibility }),
     })
-    onNotice?.(visibility === 'archived' ? 'Rapport conservé en archive.' : 'Rapport supprimé.')
+    onNotice?.(nextVisibility === 'archived' ? 'Rapport conservé en archive.' : 'Rapport supprimé.')
     setSelected(null)
     load()
   }
@@ -80,44 +102,111 @@ export function DirectorMonthlyReports({ onNotice, archived = false }) {
     }
   }
 
+  function handleYearChange(value) {
+    setYearFilter(value)
+    setMonthFilter('')
+    setPage(1)
+  }
+
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-4 text-xs uppercase text-on-surface-variant">
-        <SubDirectorateFilterHeader
-          value={sdFilter}
-          onChange={setSdFilter}
-          subDirectorates={subDirectorates}
-        />
-        <MonthFilterHeader value={monthFilter} onChange={setMonthFilter} periods={monthPeriods} />
+      <div className="flex flex-wrap items-end gap-4 text-xs uppercase text-on-surface-variant">
+        <label>
+          Année
+          <select
+            value={yearFilter}
+            onChange={(e) => handleYearChange(e.target.value)}
+            className="mt-1 block rounded border border-outline-variant bg-surface-lowest px-2 py-1 text-sm normal-case"
+          >
+            <option value="">Toutes</option>
+            {(availableYears.length ? availableYears : [new Date().getFullYear()]).map((y) => (
+              <option key={y} value={String(y)}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Mois
+          <select
+            value={monthFilter}
+            onChange={(e) => {
+              setMonthFilter(e.target.value)
+              setPage(1)
+            }}
+            className="mt-1 block rounded border border-outline-variant bg-surface-lowest px-2 py-1 text-sm normal-case"
+          >
+            <option value="">Tous</option>
+            {MONTH_NAMES.map((name, idx) => (
+              <option key={name} value={String(idx + 1)}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Sous-direction
+          <select
+            value={sdFilter}
+            onChange={(e) => {
+              setSdFilter(e.target.value)
+              setPage(1)
+            }}
+            className="mt-1 block rounded border border-outline-variant bg-surface-lowest px-2 py-1 text-sm normal-case"
+          >
+            <option value="">Toutes</option>
+            {subDirectorates.map((sd) => (
+              <option key={sd.id} value={String(sd.id)}>
+                {sd.short}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
+
       <div className="grid gap-4 lg:grid-cols-2">
-        <ScrollablePanel className="divide-y divide-outline-variant bg-surface-lowest">
-          {filteredReports.length === 0 ? (
+        <div className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
+          {loading ? (
+            <p className="p-4 text-sm text-on-surface-variant">Chargement…</p>
+          ) : reports.length === 0 ? (
             <p className="p-4 text-sm text-on-surface-variant">Aucun rapport mensuel.</p>
           ) : (
-            filteredReports.map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => setSelected(r)}
-                className={`w-full p-3 text-left transition hover:bg-surface-low ${
-                  selected?.id === r.id ? 'bg-primary/5' : ''
-                }`}
-              >
-                <p className="text-sm font-semibold">{r.sub_directorate_label}</p>
-                <p className="text-xs text-on-surface-variant">
-                  {r.month}/{r.year} — {r.uploader_name} — {formatEmittedDate(r.uploaded_at)}
-                </p>
-              </button>
-            ))
+            <ScrollablePanel className="max-h-[28rem]">
+              {yearSections.map(({ year, items }) => (
+                <section key={year} className="border-b border-outline-variant last:border-b-0">
+                  <h4 className="sticky top-0 bg-surface-low px-3 py-2 text-xs font-bold uppercase tracking-wide text-on-surface-variant">
+                    Année {year}
+                  </h4>
+                  <div className="divide-y divide-outline-variant">
+                    {items.map((r) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => setSelected(r)}
+                        className={`w-full p-3 text-left transition hover:bg-surface-low ${
+                          selected?.id === r.id ? 'bg-primary/5' : ''
+                        }`}
+                      >
+                        <p className="text-sm font-semibold">{r.sub_directorate_label}</p>
+                        <p className="text-xs text-on-surface-variant">
+                          {MONTH_NAMES[r.month - 1]} {r.year} — {r.uploader_name} —{' '}
+                          {formatEmittedDate(r.uploaded_at)}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </ScrollablePanel>
           )}
-        </ScrollablePanel>
+          <PaginationBar pagination={pagination} onPageChange={setPage} itemLabel="rapports" />
+        </div>
 
         {selected && (
           <div className="rounded border border-outline-variant bg-surface-lowest p-4 shadow-sm">
             <h3 className="font-semibold">{selected.sub_directorate_label}</h3>
             <p className="text-xs text-on-surface-variant">
-              Période {selected.month}/{selected.year} — déposé par {selected.uploader_name}
+              Période {MONTH_NAMES[selected.month - 1]} {selected.year} — déposé par {selected.uploader_name}
             </p>
             <button
               type="button"

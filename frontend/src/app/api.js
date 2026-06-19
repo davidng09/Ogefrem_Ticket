@@ -2,14 +2,21 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost/Ogefrem/api'
 
 export async function apiRequest(path, options = {}) {
   const isFormData = options.body instanceof FormData
-  const response = await fetch(`${API_BASE}${path}`, {
-    credentials: 'include',
-    ...options,
-    headers: {
-      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-      ...(options.headers || {}),
-    },
-  })
+  let response
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      credentials: 'include',
+      ...options,
+      headers: {
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(options.headers || {}),
+      },
+    })
+  } catch {
+    throw new Error(
+      'Impossible de joindre le serveur API. Vérifiez qu’Apache (XAMPP) est démarré.',
+    )
+  }
 
   if (options.rawResponse) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`)

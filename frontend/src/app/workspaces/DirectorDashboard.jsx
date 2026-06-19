@@ -1,50 +1,31 @@
-import { Archive, CalendarDays, FileText, Inbox, Send } from 'lucide-react'
+import { Archive, BarChart3, CalendarDays, FileText, Inbox, AlertTriangle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { DirectorMonthlyReports } from '../components/DirectorMonthlyReports'
+import { UnresolvedConstraintsPanel } from '../components/UnresolvedConstraintsPanel'
+import { DashboardTabNavItem } from '../components/DashboardTabButton'
+import { ExecutiveDashboard } from '../components/ExecutiveDashboard'
+import { RefreshButton } from '../components/RefreshButton'
 import { Modal } from '../components/Modal'
-import { ScrollablePanel } from '../components/ScrollablePanel'
-import { DateFilterHeader, PriorityFilterHeader } from '../components/TicketTableFilters'
-import { useTicketFilters } from '../hooks/useTicketFilters'
-import { useTickets } from '../hooks/useTickets'
+import { OpenTicketsPanel } from '../components/OpenTicketsPanel'
+import { PaginatedReportsPanel } from '../components/PaginatedReportsPanel'
 import { apiRequest } from '../api'
-import {
-  canReassignDirector,
-  formatEmittedDate,
-  formatStatusLabel,
-  getPriorityBadgeClass,
-  getStatusBadgeClass,
-  subDirectorates,
-  truncateText,
-} from '../uiHelpers'
-
-function TicketDetailModal({ ticket, open, onClose }) {
-  if (!ticket) return null
-  return (
-    <Modal open={open} onClose={onClose} title={`Détail du ticket ${ticket.ticket_number}`} wide>
-      <div className="space-y-3 text-sm">
-        <p><span className="font-semibold">Description :</span> {ticket.description}</p>
-        <p><span className="font-semibold">Nom :</span> {ticket.reporter_full_name}</p>
-        <p><span className="font-semibold">Matricule :</span> {ticket.reporter_matricule}</p>
-        <p><span className="font-semibold">Direction :</span> {ticket.reporter_direction}</p>
-        <p><span className="font-semibold">Service :</span> {ticket.reporter_service}</p>
-        <p><span className="font-semibold">Bureau :</span> {ticket.reporter_office}</p>
-        <p><span className="font-semibold">Catégorie :</span> {ticket.category_label}</p>
-        <p><span className="font-semibold">Date émise :</span> {formatEmittedDate(ticket.created_at)}</p>
-        <p><span className="font-semibold">Priorité :</span> {ticket.priority}</p>
-        {ticket.sla_due_at && <p><span className="font-semibold">Échéance :</span> {formatEmittedDate(ticket.sla_due_at)}</p>}
-      </div>
-    </Modal>
-  )
-}
+import { useReportTabStats, useTicketTabStats } from '../hooks/useTabStats'
+import { useSeenTabCounts } from '../hooks/useSeenTabCounts'
+import { applyWorkspaceSearchParams } from '../workspaceNavigation'
 
 function ReportDetailModal({ report, open, onClose, onValidate, onReject, comment, setComment }) {
   if (!report) return null
   return (
     <Modal open={open} onClose={onClose} title={`Rapport — ${report.ticket_number}`} wide>
       <div className="space-y-3 text-sm">
-        <p className="text-xs text-on-surface-variant">Ticket : {report.ticket_number} — {report.category_label}</p>
+        <p className="text-xs text-on-surface-variant">
+          Ticket : {report.ticket_number} — {report.category_label}
+        </p>
         <p className="text-xs text-on-surface-variant">Auteur : {report.author_name}</p>
-        <p className="rounded border border-outline-variant bg-surface-low p-3 whitespace-pre-wrap">{report.body}</p>
+        <p className="rounded border border-outline-variant bg-surface-low p-3 whitespace-pre-wrap">
+          {report.body}
+        </p>
         <textarea
           placeholder="Commentaire (rejet ou validation)"
           className="w-full rounded border border-outline-variant p-2 text-sm"
@@ -53,10 +34,18 @@ function ReportDetailModal({ report, open, onClose, onValidate, onReject, commen
           onChange={(e) => setComment(e.target.value)}
         />
         <div className="flex gap-2">
-          <button type="button" className="rounded bg-primary px-3 py-2 text-xs text-on-primary" onClick={() => onValidate(report.id)}>
+          <button
+            type="button"
+            className="rounded bg-primary px-3 py-2 text-xs text-on-primary"
+            onClick={() => onValidate(report.id)}
+          >
             Valider le rapport
           </button>
-          <button type="button" className="rounded border border-error px-3 py-2 text-xs text-error" onClick={() => onReject(report.id)}>
+          <button
+            type="button"
+            className="rounded border border-error px-3 py-2 text-xs text-error"
+            onClick={() => onReject(report.id)}
+          >
             Rejeter le rapport
           </button>
         </div>
@@ -65,276 +54,40 @@ function ReportDetailModal({ report, open, onClose, onValidate, onReject, commen
   )
 }
 
-function TicketTable({
-  tickets,
-  mode,
-  priorityFilter,
-  setPriorityFilter,
-  dateFilter,
-  setDateFilter,
-  onOpenDetail,
-  onAssign,
-  onOpenReport,
-  formState,
-  setFormState,
-  editingIds,
-  setEditingIds,
-  busyId,
-}) {
-  if (tickets.length === 0) {
-    return <p className="p-4 text-sm text-on-surface-variant">Aucun ticket dans cette liste.</p>
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-left text-sm">
-        <thead className="bg-surface-low text-xs uppercase text-on-surface-variant">
-          <tr>
-            <th className="p-2">Ticket</th>
-            <th className="p-2">Catégorie</th>
-            <th className="p-2">
-              <DateFilterHeader value={dateFilter} onChange={setDateFilter} />
-            </th>
-            <th className="p-2">Statut</th>
-            <th className="p-2">
-              <PriorityFilterHeader value={priorityFilter} onChange={setPriorityFilter} />
-            </th>
-            {mode === 'received' && <th className="p-2">Affectation</th>}
-            {mode === 'sent' && <th className="p-2">Actions</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {tickets.map((ticket) => {
-            const isEditing = editingIds.has(ticket.id)
-            const isAssigned = Boolean(ticket.director_assigned_at || ticket.sub_directorate_id)
-            const showForm = mode === 'received' || (mode === 'sent' && isEditing && ticket.status === 'chez_sous_direction')
-            const form = formState[ticket.id] || {
-              priority: ticket.priority,
-              sla_due_at: ticket.sla_due_at ? ticket.sla_due_at.slice(0, 16) : '',
-              sub_directorate_id: ticket.sub_directorate_id || '',
-            }
-
-            return (
-              <tr key={ticket.id} className="border-t border-outline-variant align-top">
-                <td className="p-2">
-                  <p className="font-semibold">{ticket.ticket_number}</p>
-                  <p className="text-xs text-on-surface-variant">{truncateText(ticket.description, 60)}</p>
-                  <button type="button" className="mt-1 text-xs text-primary underline" onClick={() => onOpenDetail(ticket)}>
-                    Détail du ticket
-                  </button>
-                </td>
-                <td className="p-2">{ticket.category_label}</td>
-                <td className="p-2 text-xs">{formatEmittedDate(ticket.created_at)}</td>
-                <td className="p-2">
-                  <span className={`rounded px-2 py-1 text-xs font-semibold ${getStatusBadgeClass(ticket.status)}`}>
-                    {formatStatusLabel(ticket.status, ticket)}
-                  </span>
-                </td>
-                <td className="p-2">
-                  <span className={`inline-flex rounded px-2 py-1 text-xs font-semibold ${getPriorityBadgeClass(ticket.priority)}`}>
-                    {ticket.priority}
-                  </span>
-                </td>
-                {mode === 'received' && (
-                  <td className="p-2">
-                    {!showForm && isAssigned ? (
-                      <button
-                        type="button"
-                        className="rounded border border-outline-variant px-2 py-1 text-xs"
-                        onClick={() => setEditingIds((s) => new Set(s).add(ticket.id))}
-                      >
-                        Modifier
-                      </button>
-                    ) : (
-                      <div className="space-y-2 min-w-[200px]">
-                        <select
-                          className="w-full rounded border border-outline-variant p-1 text-xs"
-                          value={form.priority}
-                          onChange={(e) =>
-                            setFormState((s) => ({
-                              ...s,
-                              [ticket.id]: { ...form, priority: e.target.value },
-                            }))
-                          }
-                        >
-                          <option value="normale">Normale</option>
-                          <option value="haute">Haute</option>
-                          <option value="bloquant">Bloquant</option>
-                        </select>
-                        <input
-                          type="datetime-local"
-                          className="w-full rounded border border-outline-variant p-1 text-xs"
-                          value={form.sla_due_at}
-                          onChange={(e) =>
-                            setFormState((s) => ({
-                              ...s,
-                              [ticket.id]: { ...form, sla_due_at: e.target.value },
-                            }))
-                          }
-                        />
-                        <div className="flex flex-wrap gap-1">
-                          {subDirectorates.map((sd) => (
-                            <button
-                              key={sd.id}
-                              type="button"
-                              onClick={() =>
-                                setFormState((s) => ({
-                                  ...s,
-                                  [ticket.id]: { ...form, sub_directorate_id: sd.id },
-                                }))
-                              }
-                              className={`rounded border px-2 py-1 text-xs transition ${
-                                Number(form.sub_directorate_id) === sd.id
-                                  ? 'border-primary bg-primary/10 font-semibold text-primary'
-                                  : 'border-outline-variant hover:bg-surface-low'
-                              }`}
-                            >
-                              {sd.short}
-                            </button>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          disabled={busyId === ticket.id || !form.sub_directorate_id}
-                          onClick={() => onAssign(ticket.id, form)}
-                          className="w-full rounded bg-primary px-2 py-1 text-xs font-semibold text-on-primary disabled:opacity-50"
-                        >
-                          Valider
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                )}
-                {mode === 'sent' && (
-                  <td className="p-2 space-y-1">
-                    {canReassignDirector(ticket) && !isEditing && (
-                      <button
-                        type="button"
-                        className="block rounded border border-outline-variant px-2 py-1 text-xs"
-                        onClick={() => setEditingIds((s) => new Set(s).add(ticket.id))}
-                      >
-                        Modifier
-                      </button>
-                    )}
-                    {isEditing && ticket.status === 'chez_sous_direction' && (
-                      <div className="space-y-2">
-                        <select
-                          className="w-full rounded border border-outline-variant p-1 text-xs"
-                          value={form.priority}
-                          onChange={(e) =>
-                            setFormState((s) => ({
-                              ...s,
-                              [ticket.id]: { ...form, priority: e.target.value },
-                            }))
-                          }
-                        >
-                          <option value="normale">Normale</option>
-                          <option value="haute">Haute</option>
-                          <option value="bloquant">Bloquant</option>
-                        </select>
-                        <input
-                          type="datetime-local"
-                          className="w-full rounded border border-outline-variant p-1 text-xs"
-                          value={form.sla_due_at}
-                          onChange={(e) =>
-                            setFormState((s) => ({
-                              ...s,
-                              [ticket.id]: { ...form, sla_due_at: e.target.value },
-                            }))
-                          }
-                        />
-                        <div className="flex flex-wrap gap-1">
-                          {subDirectorates.map((sd) => (
-                            <button
-                              key={sd.id}
-                              type="button"
-                              onClick={() =>
-                                setFormState((s) => ({
-                                  ...s,
-                                  [ticket.id]: { ...form, sub_directorate_id: sd.id },
-                                }))
-                              }
-                              className={`rounded border px-2 py-1 text-xs ${
-                                Number(form.sub_directorate_id) === sd.id
-                                  ? 'border-primary bg-primary/10 font-semibold text-primary'
-                                  : 'border-outline-variant'
-                              }`}
-                            >
-                              {sd.short}
-                            </button>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          disabled={busyId === ticket.id}
-                          onClick={() => onAssign(ticket.id, form)}
-                          className="rounded bg-primary px-2 py-1 text-xs text-on-primary"
-                        >
-                          Valider
-                        </button>
-                      </div>
-                    )}
-                    {ticket.has_report_for_director && (
-                      <button
-                        type="button"
-                        className="badge-report block rounded border px-2 py-1 text-xs"
-                        onClick={() => onOpenReport(ticket)}
-                      >
-                        Voir rapport
-                      </button>
-                    )}
-                  </td>
-                )}
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
 export function DirectorDashboard() {
-  const { tickets, loading, reload } = useTickets()
-  const [busyId, setBusyId] = useState(0)
+  const [searchParams] = useSearchParams()
   const [notice, setNotice] = useState('')
-  const [detailTicket, setDetailTicket] = useState(null)
   const [reportModal, setReportModal] = useState(null)
-  const [pendingReports, setPendingReports] = useState([])
-  const [validatedReports, setValidatedReports] = useState([])
+  const [pendingCount, setPendingCount] = useState(0)
   const [comment, setComment] = useState('')
-  const [formState, setFormState] = useState({})
-  const [editingIds, setEditingIds] = useState(new Set())
-  const [activeTab, setActiveTab] = useState('received')
+  const [activeTab, setActiveTab] = useState('dashboard')
+  const [focusTicketId, setFocusTicketId] = useState(null)
   const [monthlyCount, setMonthlyCount] = useState(0)
-  const [seenCounts, setSeenCounts] = useState({})
+  const [dashboardRefreshToken, setDashboardRefreshToken] = useState(0)
+  const [openPanelRefreshToken, setOpenPanelRefreshToken] = useState(0)
 
-  const receivedRaw = useMemo(() => tickets.filter((t) => t.status === 'nouveau'), [tickets])
-  const sentRaw = useMemo(() => tickets.filter((t) => t.status !== 'nouveau'), [tickets])
-  const sentReportCount = useMemo(
-    () => sentRaw.filter((t) => Number(t.has_report_for_director) > 0).length,
-    [sentRaw],
-  )
-  const receivedFilters = useTicketFilters(receivedRaw)
-  const sentFilters = useTicketFilters(sentRaw)
+  const openStats = useTicketTabStats(null, 'open')
+  const reportStats = useReportTabStats('director')
 
   const tabs = useMemo(
     () => [
       {
-        id: 'received',
-        label: 'Reçus',
-        icon: Inbox,
-        title: 'Tickets reçus',
-        subtitle: "En attente d'affectation vers une sous-direction",
-        count: receivedRaw.length,
+        id: 'dashboard',
+        label: 'Tableau de bord',
+        icon: BarChart3,
+        title: 'Pilotage DANTIC',
+        subtitle: 'Indicateurs, tendances et alertes SLA',
+        count: 0,
       },
       {
-        id: 'sent',
-        label: 'En cours',
-        icon: Send,
-        title: 'Tickets envoyés / en cours',
-        subtitle: 'Suivi des tickets affectés aux sous-directions',
-        count: sentReportCount,
+        id: 'open',
+        label: 'Tickets ouverts',
+        icon: Inbox,
+        title: 'Tickets ouverts',
+        subtitle: 'Incidents en cours de traitement',
+        count: openStats.stats?.total ?? 0,
+        variant: 'priority',
+        priority: openStats.stats?.priority,
       },
       {
         id: 'reports',
@@ -342,7 +95,7 @@ export function DirectorDashboard() {
         icon: FileText,
         title: 'Rapports ticket',
         subtitle: 'En attente de validation directrice',
-        count: pendingReports.length,
+        count: reportStats.stats?.total ?? pendingCount,
       },
       {
         id: 'monthly',
@@ -354,89 +107,64 @@ export function DirectorDashboard() {
       },
       {
         id: 'archives',
-        label: 'Archives',
+        label: 'Archives officielles',
         icon: Archive,
-        title: 'Archives',
-        subtitle: 'Rapports mensuels archivés et rapports ticket validés',
+        title: 'Archives officielles',
+        subtitle: 'Rapports ticket validés par la directrice (copie immuable)',
+        count: 0,
+      },
+      {
+        id: 'constraints',
+        label: 'Contraintes',
+        icon: AlertTriangle,
+        title: 'Contraintes / non résolu',
+        subtitle: 'Tickets clôturés non résolus et consignes de pilotage',
         count: 0,
       },
     ],
-    [receivedRaw.length, sentReportCount, pendingReports.length, monthlyCount],
+    [pendingCount, monthlyCount, openStats.stats, reportStats.stats],
   )
+
+  const tabTotals = useMemo(
+    () => Object.fromEntries(tabs.map((t) => [t.id, t.count])),
+    [tabs],
+  )
+  const { hasNew, wasConsulted } = useSeenTabCounts(activeTab, tabTotals)
 
   const activeTabMeta = tabs.find((t) => t.id === activeTab)
 
-  function tabHasNew(tab) {
-    return tab.count > 0 && tab.count > (seenCounts[tab.id] ?? 0)
-  }
-
-  useEffect(() => {
-    const current = tabs.find((t) => t.id === activeTab)
-    if (!current) return
-    setSeenCounts((prev) => ({ ...prev, [activeTab]: current.count }))
-  }, [activeTab, tabs])
-
-  async function loadReports() {
+  async function loadCounts() {
     try {
-      const [pending, validated, monthly] = await Promise.all([
-        apiRequest('/reports?scope=director'),
-        apiRequest('/reports/validated'),
-        apiRequest('/periodic/monthly-reports?visibility=active'),
+      const [pending, monthly] = await Promise.all([
+        apiRequest('/reports?scope=director&group_by=month&page=1&per_page=1'),
+        apiRequest('/periodic/monthly-reports?visibility=active&page=1&per_page=1'),
       ])
-      setPendingReports(pending.reports || [])
-      setValidatedReports(validated.reports || [])
-      setMonthlyCount((monthly.reports || []).length)
+      setPendingCount(pending.pagination?.total ?? (pending.reports?.length || 0))
+      setMonthlyCount(monthly.pagination?.total ?? (monthly.reports?.length || 0))
     } catch {
-      setPendingReports([])
-      setValidatedReports([])
+      setPendingCount(0)
       setMonthlyCount(0)
     }
+    reportStats.reload()
+    openStats.reload()
+    setDashboardRefreshToken((t) => t + 1)
+    setOpenPanelRefreshToken((t) => t + 1)
   }
 
   useEffect(() => {
-    loadReports()
-  }, [tickets])
+    loadCounts()
+  }, [])
+
+  useEffect(() => {
+    applyWorkspaceSearchParams(searchParams, {
+      setTab: setActiveTab,
+      setFocusTicketId,
+    })
+  }, [searchParams])
 
   function showNotice(msg) {
     setNotice(msg)
     setTimeout(() => setNotice(''), 2600)
-  }
-
-  async function assignTicket(ticketId, form) {
-    setBusyId(ticketId)
-    try {
-      await apiRequest(`/tickets/${ticketId}/assign-sub-directorate`, {
-        method: 'POST',
-        body: JSON.stringify({
-          priority: form.priority,
-          sla_due_at: form.sla_due_at || null,
-          sub_directorate_id: Number(form.sub_directorate_id),
-        }),
-      })
-      setEditingIds((s) => {
-        const next = new Set(s)
-        next.delete(ticketId)
-        return next
-      })
-      showNotice('Ticket affecté à la sous-direction.')
-      reload()
-    } finally {
-      setBusyId(0)
-    }
-  }
-
-  async function openReportForTicket(ticket) {
-    try {
-      const data = await apiRequest(`/tickets/${ticket.id}/director-report`)
-      if (data.report) {
-        setReportModal(data.report)
-        setComment('')
-      } else {
-        showNotice('Aucun rapport en attente pour ce ticket.')
-      }
-    } catch {
-      showNotice('Impossible de charger le rapport.')
-    }
   }
 
   async function validateReport(reportId) {
@@ -447,8 +175,7 @@ export function DirectorDashboard() {
     setComment('')
     setReportModal(null)
     showNotice('Rapport validé et archivé.')
-    reload()
-    loadReports()
+    loadCounts()
   }
 
   async function rejectReport(reportId) {
@@ -463,11 +190,8 @@ export function DirectorDashboard() {
     setComment('')
     setReportModal(null)
     showNotice('Rapport rejeté — renvoyé à la sous-direction.')
-    reload()
-    loadReports()
+    loadCounts()
   }
-
-  if (loading) return <p className="text-sm">Chargement du dashboard...</p>
 
   return (
     <div className="space-y-4">
@@ -479,165 +203,93 @@ export function DirectorDashboard() {
 
       <nav className="sticky top-0 z-10 flex flex-wrap items-center gap-0 border-b border-outline-variant bg-surface/95 backdrop-blur">
         <div className="flex flex-wrap items-stretch">
-          {tabs.map((tab) => {
-            const Icon = tab.icon
-            const isActive = activeTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`relative flex items-center gap-2 px-3 py-3 text-sm font-medium transition ${
-                  isActive
-                    ? 'border-b-2 border-primary text-primary'
-                    : 'text-on-surface-variant hover:bg-surface-low hover:text-on-surface'
-                }`}
-              >
-                <Icon size={16} strokeWidth={isActive ? 2.25 : 2} />
-                <span className="hidden sm:inline">{tab.label}</span>
-                {tabHasNew(tab) && (
-                  <span
-                    className="absolute right-1 top-2 h-2 w-2 rounded-full bg-error"
-                    aria-label="Nouvelles données"
-                  />
-                )}
-              </button>
-            )
-          })}
+          {tabs.map((tab) => (
+            <DashboardTabNavItem
+              key={tab.id}
+              label={tab.label}
+              icon={tab.icon}
+              count={tab.count}
+              active={activeTab === tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              hasNew={hasNew(tab.id)}
+              variant={tab.id === 'open' ? 'priority' : 'simple'}
+              priority={tab.id === 'open' ? tab.priority : undefined}
+              consulted={tab.id === 'open' ? wasConsulted('open') : true}
+            />
+          ))}
         </div>
         {activeTabMeta && (
-          <div className="min-w-0 flex-1 border-l border-outline-variant px-4 py-2">
-            <h2 className="truncate text-sm font-semibold">{activeTabMeta.title}</h2>
-            <p className="truncate text-xs text-on-surface-variant">{activeTabMeta.subtitle}</p>
+          <div className="flex min-w-0 flex-1 items-center gap-2 border-l border-outline-variant px-4 py-2">
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate text-sm font-semibold">{activeTabMeta.title}</h2>
+              <p className="truncate text-xs text-on-surface-variant">{activeTabMeta.subtitle}</p>
+            </div>
+            <RefreshButton onRefresh={loadCounts} className="shrink-0" />
           </div>
         )}
       </nav>
 
-      {activeTab === 'received' && (
-      <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
-        <ScrollablePanel>
-        <TicketTable
-          tickets={receivedFilters.filteredTickets}
-          mode="received"
-          priorityFilter={receivedFilters.priorityFilter}
-          setPriorityFilter={receivedFilters.setPriorityFilter}
-          dateFilter={receivedFilters.dateFilter}
-          setDateFilter={receivedFilters.setDateFilter}
-          onOpenDetail={setDetailTicket}
-          onAssign={assignTicket}
-          onOpenReport={openReportForTicket}
-          formState={formState}
-          setFormState={setFormState}
-          editingIds={editingIds}
-          setEditingIds={setEditingIds}
-          busyId={busyId}
-        />
-        </ScrollablePanel>
-      </section>
+      {activeTab === 'dashboard' && (
+        <section className="rounded border border-outline-variant bg-surface-lowest p-4 shadow-sm">
+          <ExecutiveDashboard
+            showSubDirectorateFilter
+            showRefreshButton={false}
+            refreshToken={dashboardRefreshToken}
+            onNavigateToOpenTickets={() => setActiveTab('open')}
+          />
+        </section>
       )}
 
-      {activeTab === 'sent' && (
-      <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
-        <ScrollablePanel>
-        <TicketTable
-          tickets={sentFilters.filteredTickets}
-          mode="sent"
-          priorityFilter={sentFilters.priorityFilter}
-          setPriorityFilter={sentFilters.setPriorityFilter}
-          dateFilter={sentFilters.dateFilter}
-          setDateFilter={sentFilters.setDateFilter}
-          onOpenDetail={setDetailTicket}
-          onAssign={assignTicket}
-          onOpenReport={openReportForTicket}
-          formState={formState}
-          setFormState={setFormState}
-          editingIds={editingIds}
-          setEditingIds={setEditingIds}
-          busyId={busyId}
+      {activeTab === 'open' && (
+        <OpenTicketsPanel
+          itemLabel="incidents"
+          showSubDirectorateFilter
+          showRefreshButton={false}
+          refreshToken={openPanelRefreshToken}
         />
-        </ScrollablePanel>
-      </section>
       )}
 
       {activeTab === 'reports' && (
-      <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
-        {pendingReports.length === 0 ? (
-          <p className="p-4 text-sm text-on-surface-variant">Aucun rapport en attente.</p>
-        ) : (
-          <ScrollablePanel className="divide-y divide-outline-variant">
-            {pendingReports.map((report) => (
-              <button
-                key={report.id}
-                type="button"
-                className="flex w-full items-start justify-between gap-3 p-3 text-left hover:bg-surface-low"
-                onClick={() => setReportModal(report)}
-              >
-                <div>
-                  <p className="text-sm font-semibold">{report.ticket_number}</p>
-                  <p className="text-xs text-on-surface-variant">{truncateText(report.body, 100)}</p>
-                  <p className="mt-1 text-xs text-on-surface-variant">
-                    {report.author_name} — {formatEmittedDate(report.created_at)}
-                  </p>
-                </div>
-                <span className={`shrink-0 rounded px-2 py-1 text-xs ${getPriorityBadgeClass(report.priority)}`}>
-                  {report.priority}
-                </span>
-              </button>
-            ))}
-          </ScrollablePanel>
-        )}
-      </section>
+        <PaginatedReportsPanel
+          endpoint="/reports?scope=director"
+          emptyMessage="Aucun rapport en attente."
+          onSelectReport={setReportModal}
+        />
       )}
 
       {activeTab === 'monthly' && (
-      <section className="rounded border border-outline-variant bg-surface-lowest p-4 shadow-sm">
-        <DirectorMonthlyReports onNotice={showNotice} archived={false} />
-      </section>
+        <section className="rounded border border-outline-variant bg-surface-lowest p-4 shadow-sm">
+          <DirectorMonthlyReports onNotice={showNotice} archived={false} />
+        </section>
       )}
 
       {activeTab === 'archives' && (
-      <>
-      <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
-        <div className="p-3">
-          <DirectorMonthlyReports onNotice={showNotice} archived />
-        </div>
-      </section>
-      <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
-        {validatedReports.length === 0 ? (
-          <p className="p-4 text-sm text-on-surface-variant">Aucun rapport archivé.</p>
-        ) : (
-          <ScrollablePanel>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-sm">
-              <thead className="bg-surface-low text-xs uppercase text-on-surface-variant">
-                <tr>
-                  <th className="p-2">Ticket</th>
-                  <th className="p-2">Catégorie</th>
-                  <th className="p-2">Auteur</th>
-                  <th className="p-2">Validé le</th>
-                  <th className="p-2">Extrait</th>
-                </tr>
-              </thead>
-              <tbody>
-                {validatedReports.map((row) => (
-                  <tr key={row.id} className="border-t border-outline-variant">
-                    <td className="p-2 font-semibold">{row.ticket_number}</td>
-                    <td className="p-2">{row.category_label}</td>
-                    <td className="p-2">{row.author_name}</td>
-                    <td className="p-2 text-xs">{formatEmittedDate(row.validated_at)}</td>
-                    <td className="p-2 text-xs text-on-surface-variant">{truncateText(row.report_body, 80)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          </ScrollablePanel>
-        )}
-      </section>
-      </>
+        <>
+          <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
+            <div className="p-3">
+              <DirectorMonthlyReports onNotice={showNotice} archived />
+            </div>
+          </section>
+          <section className="rounded border border-outline-variant bg-surface-lowest shadow-sm">
+            <div className="border-b border-outline-variant p-3">
+              <h3 className="font-semibold">Rapports ticket — archives officielles</h3>
+              <p className="text-xs text-on-surface-variant">
+                Copie immuable après validation directrice (distinct de l&apos;historique agent)
+              </p>
+            </div>
+            <PaginatedReportsPanel
+              endpoint="/reports/validated"
+              emptyMessage="Aucun rapport archivé."
+              variant="table"
+            />
+          </section>
+        </>
       )}
 
-      <TicketDetailModal ticket={detailTicket} open={Boolean(detailTicket)} onClose={() => setDetailTicket(null)} />
+      {activeTab === 'constraints' && (
+        <UnresolvedConstraintsPanel focusTicketId={focusTicketId} />
+      )}
+
       <ReportDetailModal
         report={reportModal}
         open={Boolean(reportModal)}
