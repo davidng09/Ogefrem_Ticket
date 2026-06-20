@@ -62,11 +62,17 @@ function validatePasswordStrength(string $password): void
     if (strlen($password) < 8) {
         jsonResponse(['ok' => false, 'message' => 'Le mot de passe doit contenir au moins 8 caractères.'], 422);
     }
-    if (!preg_match('/[A-Za-z]/', $password) || !preg_match('/\d/', $password)) {
-        jsonResponse([
-            'ok' => false,
-            'message' => 'Le mot de passe doit contenir au moins une lettre et un chiffre.',
-        ], 422);
+    if (!preg_match('/[a-z]/', $password)) {
+        jsonResponse(['ok' => false, 'message' => 'Le mot de passe doit contenir au moins une minuscule.'], 422);
+    }
+    if (!preg_match('/[A-Z]/', $password)) {
+        jsonResponse(['ok' => false, 'message' => 'Le mot de passe doit contenir au moins une majuscule.'], 422);
+    }
+    if (!preg_match('/\d/', $password)) {
+        jsonResponse(['ok' => false, 'message' => 'Le mot de passe doit contenir au moins un chiffre.'], 422);
+    }
+    if (!preg_match('/[^A-Za-z0-9]/', $password)) {
+        jsonResponse(['ok' => false, 'message' => 'Le mot de passe doit contenir au moins un caractère spécial.'], 422);
     }
 }
 

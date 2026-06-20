@@ -5,7 +5,7 @@ import { apiRequest } from '../api'
 import { useTicketFilters } from '../hooks/useTicketFilters'
 import { usePaginatedTickets } from '../hooks/useTickets'
 import { PaginationBar } from '../components/PaginationBar'
-import { TicketDetailLink } from '../components/TicketDetailLink'
+import { PASSWORD_POLICY_HINT } from '../utils/passwordPolicy'
 import {
   formatEmittedDate,
   formatStatusLabel,
@@ -64,7 +64,7 @@ export function AdminPanel() {
       }),
     })
     setForm(initialForm)
-    setMessage('Compte créé.')
+    setMessage('Compte créé. L’utilisateur devra changer son mot de passe à la première connexion.')
     loadUsers()
   }
 
@@ -75,7 +75,7 @@ export function AdminPanel() {
       method: 'PATCH',
       body: JSON.stringify({ password }),
     })
-    setMessage('Mot de passe réinitialisé.')
+    setMessage('Mot de passe réinitialisé. L’utilisateur devra le changer à la prochaine connexion.')
   }
 
   async function toggleActive(userId, isActive) {
@@ -158,7 +158,15 @@ export function AdminPanel() {
         <h3 className="mb-2 font-semibold">Créer un compte DANTIC</h3>
         <form onSubmit={submitCreate} className="grid gap-2 md:grid-cols-3">
           <input required placeholder="Matricule" className="rounded border border-outline-variant p-2 text-sm" value={form.matricule} onChange={(e) => setForm((s) => ({ ...s, matricule: e.target.value }))} />
-          <input required placeholder="Mot de passe test" className="rounded border border-outline-variant p-2 text-sm" value={form.password} onChange={(e) => setForm((s) => ({ ...s, password: e.target.value }))} />
+          <input
+            required
+            placeholder="Mot de passe initial"
+            title={PASSWORD_POLICY_HINT}
+            className="rounded border border-outline-variant p-2 text-sm"
+            value={form.password}
+            onChange={(e) => setForm((s) => ({ ...s, password: e.target.value }))}
+          />
+          <p className="text-xs text-on-surface-variant md:col-span-2">{PASSWORD_POLICY_HINT}</p>
           <select className="rounded border border-outline-variant p-2 text-sm" value={form.role_code} onChange={(e) => setForm((s) => ({ ...s, role_code: e.target.value }))}>
             <option value="DIRECTEUR">Directrice DANTIC</option>
             <option value="SOUS_DIRECTEUR">Sous-directeur DANTIC</option>

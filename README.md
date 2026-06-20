@@ -10,15 +10,54 @@ Application web de gestion des tickets IT pour l’OGEFREM. La **DANTIC** traite
 
 ```text
 Ogefrem/
-├── api/              Backend REST
-├── frontend/         Interface React
-└── DataBase/
-    ├── schema.sql         Schéma complet (installation neuve)
-    ├── seed.sql           Données DANTIC (rôles, users, routage)
-    ├── seed_demo.sql      Données opérationnelles (tickets, rapports, périodiques)
-    ├── migrations_up.sql  Migration cumulative (base existante)
-    └── tools/             Utilitaires (hash mot de passe)
+├── api/                          # Backend REST PHP (sessions, PDO)
+│   ├── .htaccess                 # Routage vers index.php
+│   ├── index.php                 # Point d'entrée unique
+│   ├── config/
+│   │   ├── bootstrap.php         # Sessions, CORS, en-têtes sécurité
+│   │   └── database.php          # Connexion MySQL (variables d'environnement)
+│   ├── middleware/
+│   │   ├── AuthMiddleware.php    # requireAuth, requireRoles
+│   │   ├── SecurityMiddleware.php# Expiration session, politique MDP, honeypot
+│   │   └── RateLimitMiddleware.php
+│   ├── routes/                   # auth, tickets, reports, periodic_reports, admin…
+│   ├── services/                 # Logique métier (Ticket, Report, Auth, Admin…)
+│   ├── helpers/                  # Response JSON, calendrier
+│   └── storage/                  # Fichiers uploadés (accès HTTP bloqué)
+│       ├── .htaccess             # Require all denied
+│       └── monthly_reports/      # PDF mensuels sous-direction
+│
+├── frontend/                     # Interface React (Vite)
+│   ├── src/
+│   │   ├── App.jsx               # Routes publiques + espaces DANTIC
+│   │   ├── main.jsx
+│   │   ├── index.css
+│   │   └── app/
+│   │       ├── AuthContext.jsx   # Session utilisateur
+│   │       ├── ProtectedRoute.jsx# Garde + ChangePasswordGate
+│   │       ├── ChangePasswordGate.jsx  # Modale 1ère connexion
+│   │       ├── api.js            # Client HTTP vers l'API
+│   │       ├── components/       # UI réutilisable (modales, tableaux, KPI…)
+│   │       ├── hooks/            # useTickets, usePresence, filtres…
+│   │       ├── public/           # Portail public + connexion DANTIC
+│   │       ├── utils/            # passwordPolicy, calendrier…
+│   │       └── workspaces/       # Agent, SD, directrice, admin
+│   ├── .env.example
+│   └── package.json
+│
+├── DataBase/                     # Scripts SQL
+│   ├── schema.sql                # Schéma complet (installation neuve)
+│   ├── seed.sql                  # Rôles, organigramme DANTIC, comptes test
+│   ├── seed_demo.sql             # Tickets, rapports, périodiques de démo
+│   ├── migrations_up.sql         # Migration cumulative (base existante)
+│   └── tools/
+│       └── generate_password_hash.php
+│
+├── README.md
+└── ogefrem_LOGO.png
 ```
+
+> **Note :** les dossiers `DataBase/migrations/`, `DataBase/seeds/` et `DataBase/schema/` sont des reliquats historiques. Pour toute installation ou mise à jour, utiliser uniquement les quatre fichiers SQL à la racine de `DataBase/`.
 
 ---
 
@@ -162,24 +201,55 @@ Comme un technicien + **transfert** d’un ticket pris en charge vers un autre a
 
 ---
 
-## Sécurité et accès (décisions 44–45)
+## Sécurité et accès
 
-### Mesures en place
+### Changement de mot de passe à la première connexion (espace DANTIC)
+
+Flux pour **tous les rôles** staff (directrice, sous-directeurs, chefs de service, agents, chefs de bureau) :
+
+1. L'**admin** crée le compte via `/app/admin` avec un **mot de passe initial**.
+2. Le compte est enregistré avec `must_change_password = 1` en base.
+3. À la **première connexion** dans l'espace DANTIC (`/app/...`), une **fenêtre modale bloquante** s'affiche (impossible de fermer ou d'accéder aux tickets).
+4. L'utilisateur saisit le mot de passe temporaire, puis un **nouveau mot de passe** conforme à la politique.
+5. Après validation (`POST /auth/change-password`), le flag passe à `0` et l'accès est débloqué.
+
+Le même mécanisme s'applique après une **réinitialisation de mot de passe** par l'admin.
+
+**Politique mot de passe :** 8 caractères minimum, au moins une **majuscule**, une **minuscule**, un **chiffre** et un **caractère spécial**.
+
+Les comptes de démo (`seed.sql`) ont `must_change_password = 0` pour faciliter les tests avec `Test@2026`.
+
+### Mesures de sécurité implémentées
 
 | Mesure | Détail |
 |--------|--------|
 | **Sessions** | Cookie `HttpOnly`, `SameSite=Lax`, `Secure` si HTTPS (`APP_HTTPS=1`) |
 | **Expiration session** | Inactivité 60 min par défaut (`SESSION_IDLE_SECONDS`) |
-| **Mot de passe obligatoire** | `must_change_password` bloque l'API + modal frontend au premier login |
-| **Politique mot de passe** | 8 caractères min., au moins une lettre et un chiffre |
+| **1er login / reset MDP** | `must_change_password` bloque l'API + modale frontend obligatoire |
+| **Politique mot de passe** | 8 car. min., majuscule, minuscule, chiffre, caractère spécial |
 | **Rate limiting** | Login, changement MDP, soumission publique, suivi public |
 | **Suivi public** | Token secret 64 car. — accès refusé sans token valide |
 | **Honeypot portail** | Champ invisible `_hp_website` — rejette les soumissions bots |
 | **Validation champs publics** | Longueurs max. côté serveur sur tous les champs ticket |
-| **En-têtes HTTP** | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, CSP basique |
+| **Upload PDF** | Taille max 10 Mo, extension + MIME, nom stocké aléatoire |
+| **Stockage fichiers** | `api/storage/` protégé par `.htaccess` (`Require all denied`) ; téléchargement via API authentifiée uniquement |
+| **Autorisation rapports** | `assertUserCanViewTicketReports` par rôle et périmètre |
+| **RBAC** | `requireRoles` sur chaque endpoint sensible |
+| **SQL** | Requêtes préparées PDO |
+| **En-têtes HTTP** | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, CSP basique |
 | **CORS** | Whitelist via `CORS_ORIGINS` |
 
-### 44 — Qui lit `GET /tickets/{id}/reports` ?
+### Configuration production recommandée
+
+```env
+APP_HTTPS=1
+SESSION_IDLE_SECONDS=3600
+CORS_ORIGINS=https://votre-domaine
+DB_USER=ogefrem_app
+DB_PASSWORD=<mot_de_passe_fort>
+```
+
+### Qui lit `GET /tickets/{id}/reports` ? (décision 44)
 
 | Acteur | Condition |
 |--------|-----------|
@@ -191,7 +261,7 @@ Comme un technicien + **transfert** d’un ticket pris en charge vers un autre a
 
 Contrôle appliqué sur `/tickets/{id}/reports` et les endpoints `chef-report`, `sub-directorate-report`, `director-report`.
 
-### 45 — Trois « archives » (distinctes)
+### Trois « archives » distinctes (décision 45)
 
 | Concept | Technique | Visible pour |
 |---------|-----------|--------------|
@@ -299,3 +369,5 @@ PDF démo : `api/storage/monthly_reports/demo_*_2026_*.pdf`
 | Pas de tickets démo | `mysql -u root ogefrem_ops_hub < DataBase\seed_demo.sql` |
 | Session expirée | Reconnexion ; ajuster `SESSION_IDLE_SECONDS` en prod |
 | Cookie session en HTTPS | `APP_HTTPS=1` dans l'environnement Apache/PHP |
+| Modale MDP non affichée | Compte test avec `must_change_password = 0` ; créer un compte via admin ou `UPDATE users SET must_change_password = 1` |
+| Fichier PDF inaccessible | Normal si accès direct à `api/storage/` ; utiliser l'endpoint API de téléchargement |

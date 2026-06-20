@@ -1,0 +1,3 @@
+# Bloque tout accès HTTP direct aux fichiers uploadés.
+# Les téléchargements passent uniquement par l'API authentifiée.
+Require all denied

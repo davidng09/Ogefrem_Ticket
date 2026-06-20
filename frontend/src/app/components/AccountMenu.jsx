@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../AuthContext'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { formatServiceLabel, getRoleLabel } from '../uiHelpers'
+import { PASSWORD_POLICY_HINT, validatePasswordClient } from '../utils/passwordPolicy'
 import { ThemeToggle } from './ThemeToggle'
 
 function ProfileForm({ user, onClose }) {
@@ -46,6 +47,11 @@ function ProfileForm({ user, onClose }) {
 
   async function savePassword(e) {
     e.preventDefault()
+    const policyError = validatePasswordClient(passwords.next)
+    if (policyError) {
+      setError(policyError)
+      return
+    }
     if (passwords.next !== passwords.confirm) {
       setError('Les mots de passe ne correspondent pas.')
       return
@@ -108,6 +114,7 @@ function ProfileForm({ user, onClose }) {
 
       <form onSubmit={savePassword} className="space-y-2">
         <p className="text-xs font-semibold uppercase text-on-surface-variant">Mot de passe</p>
+        <p className="text-[11px] text-on-surface-variant">{PASSWORD_POLICY_HINT}</p>
         <input
           type="password"
           className="w-full rounded border border-outline-variant px-2 py-1.5 text-sm"

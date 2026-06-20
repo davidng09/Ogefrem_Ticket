@@ -1,12 +1,20 @@
 import { createPortal } from 'react-dom'
 
-export function Modal({ open, onClose, title, children, wide = false, hideHeader = false }) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  wide = false,
+  hideHeader = false,
+  dismissible = true,
+}) {
   if (!open) return null
 
   return createPortal(
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
+      onClick={dismissible ? onClose : undefined}
       role="presentation"
     >
       <div
@@ -21,12 +29,14 @@ export function Modal({ open, onClose, title, children, wide = false, hideHeader
             <h3 id="modal-title" className="text-base font-semibold">
               {title}
             </h3>
-            <button type="button" onClick={onClose} className="rounded px-2 py-1 text-sm hover:bg-surface-low">
-              Fermer
-            </button>
+            {dismissible && (
+              <button type="button" onClick={onClose} className="rounded px-2 py-1 text-sm hover:bg-surface-low">
+                Fermer
+              </button>
+            )}
           </div>
         )}
-        {hideHeader && (
+        {hideHeader && dismissible && (
           <div className="flex justify-end px-2 pt-2">
             <button type="button" onClick={onClose} className="rounded px-2 py-1 text-xs hover:bg-surface-low">
               Fermer
