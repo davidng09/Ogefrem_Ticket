@@ -72,6 +72,7 @@ export function PublicPortal() {
       reporter_office: draft.reporter_office || profile.reporter_office || '',
       category_id: draft.category_id || 0,
       description: draft.description || '',
+      _hp_website: '',
     }
   }, [])
   const [form, setForm] = useState(initial)
@@ -222,6 +223,16 @@ export function PublicPortal() {
             <section className="pointer-events-auto w-full rounded-xl border border-outline-variant/40 bg-surface-lowest/50 p-5 shadow-lg backdrop-blur-xl">
               <h2 className="mb-3.5 text-center text-lg font-semibold">Soumettre un ticket</h2>
               <form onSubmit={submitTicket} className="space-y-2.5">
+                <input
+                  type="text"
+                  name="_hp_website"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  aria-hidden="true"
+                  value={form._hp_website || ''}
+                  onChange={(e) => setField('_hp_website', e.target.value)}
+                  className="pointer-events-none absolute -left-[9999px] h-0 w-0 opacity-0"
+                />
                 <div>
                   <label className={labelClass} htmlFor="reporter_full_name">
                     Nom complet

@@ -164,6 +164,21 @@ Comme un technicien + **transfert** d’un ticket pris en charge vers un autre a
 
 ## Sécurité et accès (décisions 44–45)
 
+### Mesures en place
+
+| Mesure | Détail |
+|--------|--------|
+| **Sessions** | Cookie `HttpOnly`, `SameSite=Lax`, `Secure` si HTTPS (`APP_HTTPS=1`) |
+| **Expiration session** | Inactivité 60 min par défaut (`SESSION_IDLE_SECONDS`) |
+| **Mot de passe obligatoire** | `must_change_password` bloque l'API + modal frontend au premier login |
+| **Politique mot de passe** | 8 caractères min., au moins une lettre et un chiffre |
+| **Rate limiting** | Login, changement MDP, soumission publique, suivi public |
+| **Suivi public** | Token secret 64 car. — accès refusé sans token valide |
+| **Honeypot portail** | Champ invisible `_hp_website` — rejette les soumissions bots |
+| **Validation champs publics** | Longueurs max. côté serveur sur tous les champs ticket |
+| **En-têtes HTTP** | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, CSP basique |
+| **CORS** | Whitelist via `CORS_ORIGINS` |
+
 ### 44 — Qui lit `GET /tickets/{id}/reports` ?
 
 | Acteur | Condition |
@@ -174,7 +189,7 @@ Comme un technicien + **transfert** d’un ticket pris en charge vers un autre a
 | Directrice / super admin | Rapport en circuit de validation ou archivé |
 | Autres | **Refus** |
 
-*(À renforcer côté API — aujourd’hui trop permissif.)*
+Contrôle appliqué sur `/tickets/{id}/reports` et les endpoints `chef-report`, `sub-directorate-report`, `director-report`.
 
 ### 45 — Trois « archives » (distinctes)
 
@@ -282,3 +297,5 @@ PDF démo : `api/storage/monthly_reports/demo_*_2026_*.pdf`
 | Login échoue | `seed.sql` importé, mot de passe `Test@2026` |
 | Colonnes manquantes | `mysql -u root ogefrem_ops_hub < DataBase\migrations_up.sql` |
 | Pas de tickets démo | `mysql -u root ogefrem_ops_hub < DataBase\seed_demo.sql` |
+| Session expirée | Reconnexion ; ajuster `SESSION_IDLE_SECONDS` en prod |
+| Cookie session en HTTPS | `APP_HTTPS=1` dans l'environnement Apache/PHP |

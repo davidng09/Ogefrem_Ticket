@@ -16,6 +16,9 @@ SQL;
 
 function createUser(PDO $pdo, array $input): int
 {
+    require_once __DIR__ . '/../middleware/SecurityMiddleware.php';
+    validatePasswordStrength((string)($input['password'] ?? ''));
+
     $required = ['matricule', 'password', 'nom', 'prenom', 'role_code'];
     foreach ($required as $field) {
         if (empty($input[$field])) {
@@ -62,6 +65,9 @@ function createUser(PDO $pdo, array $input): int
 
 function resetUserPassword(PDO $pdo, int $userId, string $newPassword): void
 {
+    require_once __DIR__ . '/../middleware/SecurityMiddleware.php';
+    validatePasswordStrength($newPassword);
+
     $stmt = $pdo->prepare('UPDATE users SET password_hash = :password_hash, must_change_password = 1, updated_at = NOW() WHERE id = :id');
     $stmt->execute([
         'password_hash' => password_hash($newPassword, PASSWORD_DEFAULT),

@@ -15,6 +15,11 @@ header('Access-Control-Allow-Credentials: true');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
 header('Referrer-Policy: strict-origin-when-cross-origin');
+header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+header("Content-Security-Policy: default-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'");
+
+$cookieSecure = filter_var(getenv('APP_HTTPS') ?: '0', FILTER_VALIDATE_BOOLEAN)
+    || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
@@ -25,7 +30,7 @@ session_set_cookie_params([
     'lifetime' => 0,
     'path' => '/',
     'httponly' => true,
-    'secure' => false,
+    'secure' => $cookieSecure,
     'samesite' => 'Lax',
 ]);
 session_start();

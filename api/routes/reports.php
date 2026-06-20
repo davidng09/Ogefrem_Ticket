@@ -127,8 +127,9 @@ if ($method === 'GET' && preg_match('#^/tickets/(\d+)/reports$#', $path, $m)) {
 }
 
 if ($method === 'GET' && preg_match('#^/tickets/(\d+)/director-report$#', $path, $m)) {
-    requireRoles(['DIRECTEUR', 'SUPER_ADMIN']);
+    $user = requireRoles(['DIRECTEUR', 'SUPER_ADMIN']);
     $ticketId = (int)$m[1];
+    assertUserCanViewTicketReports($pdo, $user, $ticketId);
     $report = getDirectorReportForTicket($pdo, $ticketId);
     jsonResponse(['ok' => true, 'report' => $report]);
 }
@@ -136,6 +137,7 @@ if ($method === 'GET' && preg_match('#^/tickets/(\d+)/director-report$#', $path,
 if ($method === 'GET' && preg_match('#^/tickets/(\d+)/sub-directorate-report$#', $path, $m)) {
     $user = requireRoles(['SOUS_DIRECTEUR', 'SUPER_ADMIN']);
     $ticketId = (int)$m[1];
+    assertUserCanViewTicketReports($pdo, $user, $ticketId);
     $subId = (int)($user['sub_directorate_id'] ?? 0);
     $report = getSubDirectorateReportForTicket($pdo, $ticketId, $subId);
     jsonResponse(['ok' => true, 'report' => $report]);
@@ -144,6 +146,7 @@ if ($method === 'GET' && preg_match('#^/tickets/(\d+)/sub-directorate-report$#',
 if ($method === 'GET' && preg_match('#^/tickets/(\d+)/chef-report$#', $path, $m)) {
     $user = requireRoles(['CHEF_SERVICE', 'SUPER_ADMIN']);
     $ticketId = (int)$m[1];
+    assertUserCanViewTicketReports($pdo, $user, $ticketId);
     $chefId = (int)($user['id'] ?? 0);
     $report = getChefReportForTicket($pdo, $ticketId, $chefId);
     jsonResponse(['ok' => true, 'report' => $report]);

@@ -17,6 +17,8 @@ if (str_starts_with($uri, $base)) {
     $path = $uri;
 }
 
+$GLOBALS['api_path'] = $path;
+
 if ($method === 'GET' && $path === '/health') {
     jsonResponse(['ok' => true, 'service' => 'OGEFREM Ops Hub API']);
 }

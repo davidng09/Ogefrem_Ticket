@@ -102,6 +102,48 @@ input::placeholder {
   animation: toast-success-enter 0.3s ease-out;
 }
 
+/* Panneaux tableau de bord — listes scrollables */
+.insight-panel-scroll {
+  max-height: 14rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.25rem;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(26, 86, 176, 0.45) rgba(0, 0, 0, 0.06);
+}
+
+.insight-panel-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+
+.insight-panel-scroll::-webkit-scrollbar-track {
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.insight-panel-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: rgba(26, 86, 176, 0.45);
+}
+
+.insight-panel-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(26, 86, 176, 0.65);
+}
+
+.dark .insight-panel-scroll {
+  scrollbar-color: rgba(148, 163, 184, 0.55) rgba(255, 255, 255, 0.08);
+}
+
+.dark .insight-panel-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dark .insight-panel-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+}
+
 /* ——— Workspace : fond OGEFREM (bleu / jaune / gris) + glass UI ——— */
 
 .workspace-app {

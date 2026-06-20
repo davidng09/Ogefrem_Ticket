@@ -15,6 +15,7 @@ if ($method === 'POST' && $path === '/auth/login') {
 }
 
 if ($method === 'POST' && $path === '/auth/change-password') {
+    enforceRateLimit($pdo, 'auth_change_password', clientIp(), 10, 900);
     $user = requireAuth();
     $body = readJsonBody();
     changeUserPassword(
@@ -40,6 +41,9 @@ if ($method === 'POST' && $path === '/auth/logout') {
 }
 
 if ($method === 'GET' && $path === '/auth/me') {
+    if (!empty($_SESSION['user'])) {
+        assertSessionNotExpired();
+    }
     $sessionUser = $_SESSION['user'] ?? null;
     if ($sessionUser) {
         $row = fetchUserSessionRow($pdo, (int)$sessionUser['id']);

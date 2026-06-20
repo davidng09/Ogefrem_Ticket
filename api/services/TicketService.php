@@ -192,6 +192,10 @@ function assertNoDuplicateOpenTicketForReporter(PDO $pdo, string $matricule, int
 
 function createPublicTicket(PDO $pdo, array $input): array
 {
+    require_once __DIR__ . '/../middleware/SecurityMiddleware.php';
+    assertPublicHoneypotClean($input);
+    $input = normalizePublicTicketInput($input);
+
     $required = ['reporter_full_name', 'reporter_matricule', 'reporter_direction', 'reporter_service', 'reporter_office', 'category_id', 'description'];
     foreach ($required as $field) {
         if (empty($input[$field])) {
@@ -202,6 +206,9 @@ function createPublicTicket(PDO $pdo, array $input): array
     $ticketNumber = generateTicketNumber($pdo);
     $trackingToken = generateTrackingToken();
     $categoryId = (int)$input['category_id'];
+    if ($categoryId <= 0) {
+        jsonResponse(['ok' => false, 'message' => 'Catégorie invalide.'], 422);
+    }
 
     $serviceId = resolveRoutedServiceId($pdo, $categoryId);
     $sdStmt = $pdo->prepare('SELECT sub_directorate_id FROM dantic_services WHERE id = :id LIMIT 1');

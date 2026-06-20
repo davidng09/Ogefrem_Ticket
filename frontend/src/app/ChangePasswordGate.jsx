@@ -58,7 +58,7 @@ export function ChangePasswordGate({ children }) {
           type="password"
           required
           minLength={8}
-          placeholder="Nouveau mot de passe (8 caractères min.)"
+          placeholder="Nouveau mot de passe (8 car. min., lettre + chiffre)"
           className="w-full rounded border border-outline-variant p-2"
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}

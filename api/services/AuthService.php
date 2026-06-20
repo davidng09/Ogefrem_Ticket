@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../middleware/RateLimitMiddleware.php';
+require_once __DIR__ . '/../middleware/SecurityMiddleware.php';
 
 function userSessionSelectSql(bool $withPassword = false): string
 {
@@ -33,15 +34,14 @@ function loginUser(PDO $pdo, string $matricule, string $password): array
 
     session_regenerate_id(true);
     $_SESSION['user'] = sessionUserFromRow($user);
+    touchSessionActivity();
 
     return $_SESSION['user'];
 }
 
 function changeUserPassword(PDO $pdo, int $userId, string $currentPassword, string $newPassword): void
 {
-    if (strlen($newPassword) < 8) {
-        jsonResponse(['ok' => false, 'message' => 'Le mot de passe doit contenir au moins 8 caractères.'], 422);
-    }
+    validatePasswordStrength($newPassword);
 
     $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id = :id AND is_active = 1');
     $stmt->execute(['id' => $userId]);
